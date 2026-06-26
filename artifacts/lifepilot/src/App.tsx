@@ -10,90 +10,94 @@ interface Event {
   addToCalendar: boolean;
 }
 
+// Date pattern: 7/30  |  7/21  |  7/20-7/24  |  7/20-24
+const DATE_RE = /\d{1,2}\/\d{1,2}(?:[-–~～]\d{1,2}(?:\/\d{1,2})?)?/;
+
+function isEventHeader(line: string): boolean {
+  return DATE_RE.test(line);
+}
+
+function extractDate(line: string): string {
+  const m = line.match(DATE_RE);
+  return m ? m[0] : "";
+}
+
+function extractTitle(line: string, date: string): string {
+  return line.replace(date, "").replace(/\s+/g, " ").trim();
+}
+
+function extractTime(line: string): string {
+  // （時間09點-12點）  |  時間14點-17點  |  09:00-12:00
+  const patterns = [
+    /時間\s*(\d{1,2}[點点]\s*[-–~～]\s*\d{1,2}[點点])/,
+    /時間\s*(\d{1,2}[點点])/,
+    /時間\s*(\d{1,2}:\d{2}\s*[-–~～]\s*\d{1,2}:\d{2})/,
+    /時間\s*(\d{1,2}:\d{2})/,
+    /(\d{1,2}:\d{2}\s*[-–~～]\s*\d{1,2}:\d{2})/,
+  ];
+  for (const re of patterns) {
+    const m = line.match(re);
+    if (m) return m[1];
+  }
+  return "";
+}
+
+function extractLocation(line: string): string {
+  return line.replace(/[（()）【】]/g, "").trim();
+}
+
+function isTimeLine(line: string): boolean {
+  return /時間/.test(line) || /\d{1,2}:\d{2}/.test(line);
+}
+
 function parseEvents(text: string): Event[] {
-  const blocks = text
-    .split(/\n\s*\n/)
-    .map((b) => b.trim())
-    .filter((b) => b.length > 0);
+  const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
 
-  return blocks.map((block, idx) => {
-    const lines = block.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  // Group lines into blocks, starting a new block when we hit a header line
+  const blocks: string[][] = [];
+  let current: string[] = [];
 
-    const title = extractTitle(lines);
-    const date = extractDate(block);
-    const time = extractTime(block);
-    const location = extractLocation(block);
-
-    return {
-      id: idx + 1,
-      title,
-      date,
-      time,
-      location,
-      keepInLifePilot: true,
-      addToCalendar: false,
-    };
-  });
-}
-
-function extractTitle(lines: string[]): string {
-  if (lines.length === 0) return "（無標題）";
-  const labelPrefixes = /^(日期|時間|地點|地址|位置|時段|venue|date|time|location)[:：\s]/i;
   for (const line of lines) {
-    if (!labelPrefixes.test(line)) return line.replace(/^[#＃\-–—•·]+\s*/, "").trim();
+    if (isEventHeader(line)) {
+      if (current.length > 0) blocks.push(current);
+      current = [line];
+    } else {
+      current.push(line);
+    }
   }
-  return lines[0];
-}
+  if (current.length > 0) blocks.push(current);
 
-function extractDate(block: string): string {
-  const patterns = [
-    /日期[:：\s]*([0-9]{4}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{1,2})/,
-    /([0-9]{4}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{1,2})/,
-    /日期[:：\s]*([0-9]{1,2}[\/\-\.][0-9]{1,2})/,
-    /([0-9]{1,2}月[0-9]{1,2}日)/,
-    /([0-9]{1,2}[\/][0-9]{1,2})\s*[\(（]/,
-    /([0-9]{1,2}[\/][0-9]{1,2})/,
-    /((?:一|二|三|四|五|六|日|週一|週二|週三|週四|週五|週六|週日|星期一|星期二|星期三|星期四|星期五|星期六|星期日))/,
-  ];
-  for (const re of patterns) {
-    const m = block.match(re);
-    if (m) return m[1];
-  }
-  return "";
-}
+  return blocks
+    .filter((b) => b.length > 0 && isEventHeader(b[0]))
+    .map((block, idx) => {
+      const headerLine = block[0];
+      const bodyLines = block.slice(1);
 
-function extractTime(block: string): string {
-  const patterns = [
-    /時間[:：\s]*([0-9]{1,2}[:：][0-9]{2}(?:\s*[APap][Mm])?)/,
-    /時段[:：\s]*([0-9]{1,2}[:：][0-9]{2})/,
-    /([0-9]{1,2}[:：][0-9]{2})\s*[-–~～]\s*[0-9]{1,2}[:：][0-9]{2}/,
-    /([0-9]{1,2}[:：][0-9]{2})/,
-    /(上午|下午|早上|晚上)[0-9]{1,2}[點点時时]/,
-    /([0-9]{1,2}[點点時时](?:[0-9]{1,2}[分]?)?)/,
-    /(\d{1,2}:\d{2}\s*[APap][Mm])/,
-  ];
-  for (const re of patterns) {
-    const m = block.match(re);
-    if (m) return m[1];
-  }
-  return "";
-}
+      const date = extractDate(headerLine);
+      const title = extractTitle(headerLine, date) || "（無標題）";
 
-function extractLocation(block: string): string {
-  const patterns = [
-    /地點[:：\s]*(.+)/,
-    /地址[:：\s]*(.+)/,
-    /位置[:：\s]*(.+)/,
-    /venue[:：\s]*(.+)/i,
-    /location[:：\s]*(.+)/i,
-    /場地[:：\s]*(.+)/,
-    /(?:在|於|at)\s+(.+)/,
-  ];
-  for (const re of patterns) {
-    const m = block.match(re);
-    if (m) return m[1].trim();
-  }
-  return "";
+      let time = "";
+      let location = "";
+
+      for (const line of bodyLines) {
+        const t = extractTime(line);
+        if (t && !time) {
+          time = t;
+        } else if (!isTimeLine(line) && !location) {
+          location = extractLocation(line);
+        }
+      }
+
+      return {
+        id: idx + 1,
+        title,
+        date,
+        time,
+        location,
+        keepInLifePilot: true,
+        addToCalendar: false,
+      };
+    });
 }
 
 function EventCard({
@@ -189,6 +193,18 @@ export default function App() {
     );
   }
 
+  const PLACEHOLDER = `美術班 7/30
+復旦國小
+（時間09點-12點）
+
+福爾 7/21
+平鎮分局
+（時間09點-12點）
+
+桌球7/20-7/24
+平興國小
+（時間14點-17點）`;
+
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       <div className="max-w-2xl mx-auto px-6 py-14">
@@ -202,16 +218,18 @@ export default function App() {
         <div className="mb-2">
           <textarea
             value={message}
-            onChange={(e) => { setMessage(e.target.value); setAnalyzed(false); setError(""); }}
-            placeholder={"貼上 LINE 訊息內容...\n\n每個活動請用空白行分隔，例如：\n\n美術班\n日期：7/5\n時間：14:00\n地點：藝術教室 3F\n\n桌球練習\n日期：7/12\n時間：16:00\n地點：體育館 1F"}
+            onChange={(e) => {
+              setMessage(e.target.value);
+              setAnalyzed(false);
+              setError("");
+            }}
+            placeholder={PLACEHOLDER}
             rows={8}
-            className="w-full rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 px-5 py-4 text-base resize-none focus:outline-none focus:border-blue-500/60 focus:bg-white/8 transition-all duration-200"
+            className="w-full rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 px-5 py-4 text-base resize-none focus:outline-none focus:border-blue-500/60 transition-all duration-200"
           />
         </div>
 
-        {error && (
-          <p className="text-red-400 text-sm mb-4">{error}</p>
-        )}
+        {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
 
         <button
           onClick={handleAnalyze}
@@ -227,7 +245,7 @@ export default function App() {
               <p className="text-sm text-gray-500">
                 {events.length > 0
                   ? `共找到 ${events.length} 個活動`
-                  : "未找到任何活動，請確認訊息格式"}
+                  : "未找到任何活動，請確認每個活動標題包含日期（如：美術班 7/30）"}
               </p>
             </div>
 
