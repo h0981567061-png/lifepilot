@@ -51,15 +51,23 @@ function isTimeLine(line: string): boolean {
 }
 
 function parseEvents(text: string): Event[] {
-  const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  // Preserve blank lines as boundary signals — do NOT filter them yet
+  const rawLines = text.split("\n").map((l) => l.trim());
 
-  // Group lines into blocks, starting a new block when we hit a header line
   const blocks: string[][] = [];
   let current: string[] = [];
 
-  for (const line of lines) {
-    if (isEventHeader(line)) {
-      if (current.length > 0) blocks.push(current);
+  for (const line of rawLines) {
+    if (line === "") {
+      // Rule 1: blank line → flush current block and start fresh
+      if (current.length > 0) {
+        blocks.push(current);
+        current = [];
+      }
+    } else if (isEventHeader(line) && current.length > 0) {
+      // Rule 2: date-header line while a block is already open → also split
+      // (handles no-blank-line inputs where events run together)
+      blocks.push(current);
       current = [line];
     } else {
       current.push(line);
@@ -68,13 +76,22 @@ function parseEvents(text: string): Event[] {
   if (current.length > 0) blocks.push(current);
 
   return blocks
-    .filter((b) => b.length > 0 && isEventHeader(b[0]))
+    .filter((b) => b.length > 0)
     .map((block, idx) => {
-      const headerLine = block[0];
+      const firstLine = block[0];
       const bodyLines = block.slice(1);
 
-      const date = extractDate(headerLine);
-      const title = extractTitle(headerLine, date) || "（無標題）";
+      // Date: check first line, then scan body lines as fallback
+      let date = extractDate(firstLine);
+      if (!date) {
+        for (const line of bodyLines) {
+          const d = extractDate(line);
+          if (d) { date = d; break; }
+        }
+      }
+
+      // Title: first line with date stripped out
+      const title = extractTitle(firstLine, date) || "（無標題）";
 
       let time = "";
       let location = "";
@@ -245,7 +262,7 @@ export default function App() {
               <p className="text-sm text-gray-500">
                 {events.length > 0
                   ? `共找到 ${events.length} 個活動`
-                  : "未找到任何活動，請確認每個活動標題包含日期（如：美術班 7/30）"}
+                  : "未找到任何活動，請確認訊息不為空白"}
               </p>
             </div>
 
