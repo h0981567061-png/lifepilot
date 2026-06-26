@@ -14,7 +14,13 @@ interface Event {
 const DATE_RE = /\d{1,2}\/\d{1,2}(?:[-–~～]\d{1,2}(?:\/\d{1,2})?)?/;
 
 function isEventHeader(line: string): boolean {
-  return DATE_RE.test(line);
+  // Must contain a date pattern
+  const m = line.match(DATE_RE);
+  if (!m) return false;
+  // The text BEFORE the date must contain at least one Chinese character or letter
+  // This ensures "美術班 7/30" qualifies but a bare "7/30" line does not
+  const beforeDate = line.slice(0, m.index).trim();
+  return /[\u4e00-\u9fff\w]/.test(beforeDate);
 }
 
 function extractDate(line: string): string {
