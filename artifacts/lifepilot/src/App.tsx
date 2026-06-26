@@ -230,6 +230,88 @@ function detectParserType(text: string): "airport" | "course" {
   return "course";
 }
 
+// ─── Message type detection ───────────────────────────────────────────────────
+
+type MessageTypeName =
+  | "Course"
+  | "Airport Transfer"
+  | "Shopping"
+  | "Payment"
+  | "Medical"
+  | "Pending";
+
+interface DetectionResult {
+  type: MessageTypeName;
+  label: string;       // Traditional Chinese label
+  confidence: number;  // 0–99
+  color: string;       // Tailwind accent class
+}
+
+function detectMessageType(text: string): DetectionResult {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const full = lines.join("\n");
+
+  const scores: Record<string, number> = {
+    "Airport Transfer": 0,
+    "Course": 0,
+    "Shopping": 0,
+    "Payment": 0,
+    "Medical": 0,
+  };
+
+  // ── Airport Transfer ──
+  // Strong signal: any line starts with 4-digit time
+  scores["Airport Transfer"] += lines.filter((l) => TRANSFER_HEADER_RE.test(l)).length * 60;
+  // Supporting keywords
+  scores["Airport Transfer"] +=
+    (full.match(/接機|送機|班機|轎車|廂型|接送|機場|航班/g) ?? []).length * 15;
+
+  // ── Course ──
+  // Strong signal: title + date pattern on same line
+  scores["Course"] += lines.filter((l) => isEventHeader(l)).length * 30;
+  // Supporting keywords
+  scores["Course"] +=
+    (full.match(/時間.*?點|上課|課程|補習|教室|國小|國中|高中/g) ?? []).length * 10;
+
+  // ── Shopping ──
+  scores["Shopping"] +=
+    (full.match(/購買|訂單|商品|結帳|收據|發票|折扣|優惠|免運|出貨|宅配|購物|下單/g) ?? []).length * 20;
+  if (/NT\$|NTD/.test(full)) scores["Shopping"] += 15;
+
+  // ── Payment ──
+  scores["Payment"] +=
+    (full.match(/轉帳|匯款|帳號|收款|付款|ATM|繳費|銀行|戶名|存款|匯入|繳納/g) ?? []).length * 20;
+
+  // ── Medical ──
+  scores["Medical"] +=
+    (full.match(/掛號|診所|醫院|看診|門診|醫師|醫生|回診|複診|藥局|處方|掛診/g) ?? []).length * 20;
+
+  // ── Find winner ──
+  const entries = Object.entries(scores);
+  const [winner, winScore] = entries.reduce<[string, number]>(
+    (best, [k, v]) => (v > best[1] ? [k, v] : best),
+    ["", 0]
+  );
+
+  if (winScore === 0) {
+    return { type: "Pending", label: "待分類", confidence: 0, color: "gray" };
+  }
+
+  // Confidence: winner vs. rest (soft-max style, capped at 99)
+  const restSum = entries.reduce((s, [, v]) => s + v, 0) - winScore;
+  const confidence = Math.min(99, Math.round((winScore / (winScore + restSum + 20)) * 100));
+
+  const META: Record<string, { type: MessageTypeName; label: string; color: string }> = {
+    "Airport Transfer": { type: "Airport Transfer", label: "接送機",  color: "amber"  },
+    "Course":           { type: "Course",           label: "課程",    color: "blue"   },
+    "Shopping":         { type: "Shopping",         label: "購物",    color: "purple" },
+    "Payment":          { type: "Payment",          label: "付款",    color: "green"  },
+    "Medical":          { type: "Medical",          label: "醫療",    color: "rose"   },
+  };
+
+  return { ...META[winner], confidence };
+}
+
 // ─── Course card ──────────────────────────────────────────────────────────────
 
 function EventCard({
@@ -355,6 +437,7 @@ export default function App() {
   const [events, setEvents] = useState<Event[]>([]);
   const [transfers, setTransfers] = useState<AirportTransfer[]>([]);
   const [parserType, setParserType] = useState<"course" | "airport">("course");
+  const [detectionResult, setDetectionResult] = useState<DetectionResult | null>(null);
   const [analyzed, setAnalyzed] = useState(false);
   const [error, setError] = useState("");
 
@@ -365,6 +448,7 @@ export default function App() {
       return;
     }
     setError("");
+    setDetectionResult(detectMessageType(trimmed));
     const type = detectParserType(trimmed);
     setParserType(type);
     if (type === "airport") {
@@ -454,6 +538,52 @@ export default function App() {
 
         {analyzed && (
           <>
+            {/* ── Detection result card ── */}
+            {detectionResult && (
+              <div className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-5 flex flex-col gap-3">
+                <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold">偵測類型</p>
+                <div className="flex items-center gap-3">
+                  <span className={`text-2xl font-bold ${
+                    detectionResult.color === "amber"  ? "text-amber-300"  :
+                    detectionResult.color === "blue"   ? "text-blue-400"   :
+                    detectionResult.color === "purple" ? "text-purple-400" :
+                    detectionResult.color === "green"  ? "text-emerald-400":
+                    detectionResult.color === "rose"   ? "text-rose-400"   :
+                    "text-gray-400"
+                  }`}>
+                    {detectionResult.label}
+                  </span>
+                  <span className="text-sm text-gray-500">({detectionResult.type})</span>
+                </div>
+                <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold mt-1">信心度</p>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        detectionResult.color === "amber"  ? "bg-amber-400"  :
+                        detectionResult.color === "blue"   ? "bg-blue-400"   :
+                        detectionResult.color === "purple" ? "bg-purple-400" :
+                        detectionResult.color === "green"  ? "bg-emerald-400":
+                        detectionResult.color === "rose"   ? "bg-rose-400"   :
+                        "bg-gray-500"
+                      }`}
+                      style={{ width: `${detectionResult.confidence}%` }}
+                    />
+                  </div>
+                  <span className={`text-lg font-bold tabular-nums ${
+                    detectionResult.color === "amber"  ? "text-amber-300"  :
+                    detectionResult.color === "blue"   ? "text-blue-400"   :
+                    detectionResult.color === "purple" ? "text-purple-400" :
+                    detectionResult.color === "green"  ? "text-emerald-400":
+                    detectionResult.color === "rose"   ? "text-rose-400"   :
+                    "text-gray-400"
+                  }`}>
+                    {detectionResult.confidence}%
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="mb-6">
               <h2 className="text-lg font-semibold text-gray-200 mb-1">分析結果</h2>
               <p className="text-sm text-gray-500">{resultLabel}</p>
