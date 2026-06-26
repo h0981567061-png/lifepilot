@@ -12,6 +12,17 @@ interface Event {
   addToCalendar: boolean;
 }
 
+// ─── Apple Reminders data structure ──────────────────────────────────────────
+
+interface ReminderItem {
+  sourceEventId: number;
+  title: string;
+  notes: string;
+  dueDate: Date | null;       // event date + start time
+  reminderDate: Date | null;  // 1 h before dueDate; or 09:00 when no time given
+  isCompleted: boolean;
+}
+
 // Date pattern: 7/30  |  7/21  |  7/20-7/24  |  7/20-24
 const DATE_RE = /\d{1,2}\/\d{1,2}(?:[-–~～]\d{1,2}(?:\/\d{1,2})?)?/;
 
@@ -313,6 +324,83 @@ function detectMessageType(text: string): DetectionResult {
   return { ...META[winner], confidence };
 }
 
+// ─── Apple Reminders builder ─────────────────────────────────────────────────
+
+/** Parse "7/30" or "7/20-7/24" → Date using the current year. */
+function parseEventDate(dateStr: string, timeStr: string): Date | null {
+  if (!dateStr) return null;
+  const datePart = dateStr.split(/[-–~～]/)[0].trim();
+  const [monthStr, dayStr] = datePart.split("/");
+  const month = parseInt(monthStr);
+  const day = parseInt(dayStr);
+  if (!month || !day) return null;
+
+  const year = new Date().getFullYear();
+  let hour = 0;
+  let minute = 0;
+
+  if (timeStr) {
+    // HH:MM format
+    const colonMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
+    if (colonMatch) {
+      hour = parseInt(colonMatch[1]);
+      minute = parseInt(colonMatch[2]);
+    } else {
+      // Chinese 點 format: take first number before 點
+      const dotMatch = timeStr.match(/(\d{1,2})[點点]/);
+      if (dotMatch) hour = parseInt(dotMatch[1]);
+    }
+  }
+
+  return new Date(year, month - 1, day, hour, minute, 0, 0);
+}
+
+/** Convert selected course events into Apple Reminders-ready data objects. */
+function buildReminderItems(events: Event[]): ReminderItem[] {
+  return events
+    .filter((e) => e.keepInLifePilot)
+    .map((e) => {
+      const dueDate = parseEventDate(e.date, e.time);
+
+      let reminderDate: Date | null = null;
+      if (dueDate) {
+        if (e.time) {
+          // Remind 1 hour before the event start
+          reminderDate = new Date(dueDate.getTime() - 60 * 60 * 1000);
+        } else {
+          // No time given → remind at 09:00 on that day
+          reminderDate = new Date(dueDate);
+          reminderDate.setHours(9, 0, 0, 0);
+        }
+      }
+
+      const noteLines: string[] = [];
+      if (e.location) noteLines.push(`地點：${e.location}`);
+      if (e.time)     noteLines.push(`時間：${e.time}`);
+      if (e.date)     noteLines.push(`日期：${e.date}`);
+
+      return {
+        sourceEventId: e.id,
+        title: e.title,
+        notes: noteLines.join("\n"),
+        dueDate,
+        reminderDate,
+        isCompleted: false,
+      };
+    });
+}
+
+/** Format a Date for compact display, e.g. "7/30 09:00". */
+function formatReminderDate(d: Date | null): string {
+  if (!d) return "—";
+  const mo = d.getMonth() + 1;
+  const da = d.getDate();
+  const h = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
+  const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0;
+  return hasTime ? `${mo}/${da} ${h}:${m}` : `${mo}/${da}`;
+}
+
 // ─── Course card ──────────────────────────────────────────────────────────────
 
 function EventCard({
@@ -438,6 +526,7 @@ export default function App() {
   const [transfers, setTransfers] = useState<AirportTransfer[]>([]);
   const [parserType, setParserType] = useState<"course" | "airport">("course");
   const [detectionResult, setDetectionResult] = useState<DetectionResult | null>(null);
+  const [reminderItems, setReminderItems] = useState<ReminderItem[]>([]);
   const [analyzed, setAnalyzed] = useState(false);
   const [error, setError] = useState("");
 
@@ -448,6 +537,7 @@ export default function App() {
       return;
     }
     setError("");
+    setReminderItems([]);
     setDetectionResult(detectMessageType(trimmed));
     const type = detectParserType(trimmed);
     setParserType(type);
@@ -494,8 +584,9 @@ export default function App() {
       const selected = transfers.filter((t) => t.selected);
       alert(`已建立 ${selected.length} 筆接送機行程到 LifePilot。`);
     } else {
-      const selected = events.filter((e) => e.keepInLifePilot);
-      alert(`已建立 ${selected.length} 個活動到 LifePilot。`);
+      // Build Apple Reminders-ready data for selected events
+      const items = buildReminderItems(events);
+      setReminderItems(items);
     }
   }
 
@@ -650,6 +741,39 @@ export default function App() {
                 >
                   建立所選（{selectedCount}）
                 </button>
+
+                {/* ── Apple Reminders preview ── */}
+                {reminderItems.length > 0 && (
+                  <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5">
+                    <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold mb-4">
+                      已準備 {reminderItems.length} 筆提醒資料
+                    </p>
+                    <div className="flex flex-col gap-3">
+                      {reminderItems.map((item) => (
+                        <div
+                          key={item.sourceEventId}
+                          className="rounded-xl border border-white/10 bg-white/5 p-4 flex flex-col gap-1"
+                        >
+                          <p className="font-semibold text-white text-sm">{item.title}</p>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-1 text-xs text-gray-400">
+                            <span className="text-gray-600">到期</span>
+                            <span>{formatReminderDate(item.dueDate)}</span>
+                            <span className="text-gray-600">提醒</span>
+                            <span>{formatReminderDate(item.reminderDate)}</span>
+                          </div>
+                          {item.notes && (
+                            <p className="mt-1 text-xs text-gray-500 whitespace-pre-line leading-relaxed">
+                              {item.notes}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-600 mt-4 italic">
+                      資料已準備完成，尚未同步至 Apple 提醒事項。
+                    </p>
+                  </div>
+                )}
               </>
             ) : (
               <p className="text-sm text-gray-500 mt-2">
