@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+// ─── Course parser types & helpers ───────────────────────────────────────────
+
 interface Event {
   id: number;
   title: string;
@@ -123,6 +125,113 @@ function parseEvents(text: string): Event[] {
     });
 }
 
+// ─── Airport Transfer parser types & helpers ──────────────────────────────────
+
+interface AirportTransfer {
+  id: number;
+  time: string;
+  flight: string;
+  type: string;    // 接機 | 送機 | ""
+  district: string;
+  vehicle: string;
+  price: string;
+  notes: string;
+}
+
+// A line "starts with a four-digit time" e.g. 2100, 2115, 0830
+const TRANSFER_HEADER_RE = /^\d{4}(\s|$)/;
+// Flight number: 1–2 uppercase letters + 2–5 digits, e.g. BR212, CI101, CX456
+const FLIGHT_RE = /^[A-Za-z]{1,2}\d{2,5}$/;
+// Price: a standalone 3–6 digit number
+const PRICE_RE = /^\d{3,6}$/;
+// Vehicle keywords
+const VEHICLE_RE = /轎車|廂型|sedan|van|巴士|bus/i;
+// Pickup / Dropoff keywords
+const TRANSFER_TYPE_RE = /接機|送機/;
+
+function isTransferHeader(line: string): boolean {
+  return TRANSFER_HEADER_RE.test(line);
+}
+
+function parseAirportTransfers(text: string): AirportTransfer[] {
+  const rawLines = text.split("\n").map((l) => l.trim());
+
+  const blocks: string[][] = [];
+  let current: string[] = [];
+
+  for (const line of rawLines) {
+    if (line === "") {
+      if (current.length > 0) { blocks.push(current); current = []; }
+    } else if (isTransferHeader(line) && current.length > 0) {
+      blocks.push(current);
+      current = [line];
+    } else {
+      current.push(line);
+    }
+  }
+  if (current.length > 0) blocks.push(current);
+
+  return blocks
+    .filter((b) => b.length > 0 && isTransferHeader(b[0]))
+    .map((block, idx) => {
+      const firstLine = block[0];
+      // Everything after the 4-digit time on the header line
+      const headerRest = firstLine.slice(4).trim();
+      const bodyLines = block.slice(1);
+      // All content lines (header remainder + body)
+      const allExtra = [...(headerRest ? [headerRest] : []), ...bodyLines];
+
+      const time = firstLine.slice(0, 4);
+      let flight = "";
+      let type = "";
+      let district = "";
+      let vehicle = "";
+      let price = "";
+      const noteParts: string[] = [];
+
+      for (const line of allExtra) {
+        if (!flight && FLIGHT_RE.test(line)) {
+          flight = line.toUpperCase();
+        } else if (!type && TRANSFER_TYPE_RE.test(line)) {
+          const m = line.match(TRANSFER_TYPE_RE);
+          type = m ? m[0] : line;
+        } else if (!vehicle && VEHICLE_RE.test(line)) {
+          vehicle = line;
+        } else if (!price && PRICE_RE.test(line)) {
+          price = line;
+        } else if (/備註/.test(line)) {
+          noteParts.push(line.replace(/備註\s*[：:]\s*/, "").trim());
+        } else if (!district && /[\u4e00-\u9fff]/.test(line)) {
+          // First Chinese-character line not matched above → district
+          district = line;
+        } else {
+          noteParts.push(line);
+        }
+      }
+
+      return {
+        id: idx + 1,
+        time,
+        flight,
+        type,
+        district,
+        vehicle,
+        price,
+        notes: noteParts.filter(Boolean).join("　").trim(),
+      };
+    });
+}
+
+// ─── Parser auto-detection ────────────────────────────────────────────────────
+
+function detectParserType(text: string): "airport" | "course" {
+  const lines = text.split("\n").map((l) => l.trim());
+  if (lines.some((l) => TRANSFER_HEADER_RE.test(l))) return "airport";
+  return "course";
+}
+
+// ─── Course card ──────────────────────────────────────────────────────────────
+
 function EventCard({
   event,
   onChange,
@@ -184,9 +293,68 @@ function EventCard({
   );
 }
 
+// ─── Airport Transfer card ────────────────────────────────────────────────────
+
+function Field({ label, value }: { label: string; value: string }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-start gap-2 text-sm">
+      <span className="text-amber-400/70 shrink-0 w-14 text-right">{label}</span>
+      <span className="text-gray-200">{value}</span>
+    </div>
+  );
+}
+
+function AirportTransferCard({ transfer }: { transfer: AirportTransfer }) {
+  const typeColor =
+    transfer.type === "接機"
+      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+      : transfer.type === "送機"
+      ? "bg-sky-500/15 text-sky-300 border-sky-500/30"
+      : "bg-white/5 text-gray-400 border-white/10";
+
+  return (
+    <div className="rounded-2xl border border-amber-500/20 bg-white/5 backdrop-blur-sm p-6 flex flex-col gap-4 hover:border-amber-500/40 transition-all duration-200">
+      {/* Header row: time + type badge + flight */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-2xl font-bold text-amber-300 tracking-widest">
+          {transfer.time.slice(0, 2)}:{transfer.time.slice(2)}
+        </span>
+        {transfer.type && (
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${typeColor}`}>
+            {transfer.type}
+          </span>
+        )}
+        {transfer.flight && (
+          <span className="text-sm font-mono text-gray-300 bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">
+            ✈ {transfer.flight}
+          </span>
+        )}
+      </div>
+
+      {/* Detail fields */}
+      <div className="flex flex-col gap-1.5">
+        <Field label="地區" value={transfer.district} />
+        <Field label="車型" value={transfer.vehicle} />
+        <Field label="費用" value={transfer.price ? `NT$ ${transfer.price}` : ""} />
+        <Field label="備註" value={transfer.notes} />
+      </div>
+
+      {/* Fallback when no fields parsed */}
+      {!transfer.district && !transfer.vehicle && !transfer.price && !transfer.notes && (
+        <p className="text-xs text-gray-600 italic">無詳細資料</p>
+      )}
+    </div>
+  );
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+
 export default function App() {
   const [message, setMessage] = useState("");
   const [events, setEvents] = useState<Event[]>([]);
+  const [transfers, setTransfers] = useState<AirportTransfer[]>([]);
+  const [parserType, setParserType] = useState<"course" | "airport">("course");
   const [analyzed, setAnalyzed] = useState(false);
   const [error, setError] = useState("");
 
@@ -197,8 +365,15 @@ export default function App() {
       return;
     }
     setError("");
-    const parsed = parseEvents(trimmed);
-    setEvents(parsed);
+    const type = detectParserType(trimmed);
+    setParserType(type);
+    if (type === "airport") {
+      setTransfers(parseAirportTransfers(trimmed));
+      setEvents([]);
+    } else {
+      setEvents(parseEvents(trimmed));
+      setTransfers([]);
+    }
     setAnalyzed(true);
   }
 
@@ -209,12 +384,28 @@ export default function App() {
   }
 
   function handleCreate() {
-    const kept = events.filter((e) => e.keepInLifePilot);
-    const calendarItems = events.filter((e) => e.addToCalendar);
-    alert(
-      `已建立 ${kept.length} 個活動到 LifePilot${calendarItems.length > 0 ? `，並將 ${calendarItems.length} 個活動加入行事曆` : ""}。`
-    );
+    if (parserType === "airport") {
+      alert(`已建立 ${transfers.length} 筆接送機行程到 LifePilot。`);
+    } else {
+      const kept = events.filter((e) => e.keepInLifePilot);
+      const calendarItems = events.filter((e) => e.addToCalendar);
+      alert(
+        `已建立 ${kept.length} 個活動到 LifePilot${calendarItems.length > 0 ? `，並將 ${calendarItems.length} 個活動加入行事曆` : ""}。`
+      );
+    }
   }
+
+  const resultCount =
+    parserType === "airport" ? transfers.length : events.length;
+
+  const resultLabel =
+    parserType === "airport"
+      ? resultCount > 0
+        ? `共找到 ${resultCount} 筆接送機行程`
+        : "未找到接送機行程，請確認每筆資料以四位數時間開頭（如：2100）"
+      : resultCount > 0
+      ? `共找到 ${resultCount} 個活動`
+      : "未找到任何活動，請確認訊息不為空白";
 
   const PLACEHOLDER = `美術班 7/30
 復旦國小
@@ -265,19 +456,19 @@ export default function App() {
           <>
             <div className="mb-6">
               <h2 className="text-lg font-semibold text-gray-200 mb-1">分析結果</h2>
-              <p className="text-sm text-gray-500">
-                {events.length > 0
-                  ? `共找到 ${events.length} 個活動`
-                  : "未找到任何活動，請確認訊息不為空白"}
-              </p>
+              <p className="text-sm text-gray-500">{resultLabel}</p>
             </div>
 
-            {events.length > 0 && (
+            {resultCount > 0 && (
               <>
                 <div className="flex flex-col gap-4 mb-8">
-                  {events.map((event) => (
-                    <EventCard key={event.id} event={event} onChange={handleChange} />
-                  ))}
+                  {parserType === "airport"
+                    ? transfers.map((t) => (
+                        <AirportTransferCard key={t.id} transfer={t} />
+                      ))
+                    : events.map((event) => (
+                        <EventCard key={event.id} event={event} onChange={handleChange} />
+                      ))}
                 </div>
 
                 <button
