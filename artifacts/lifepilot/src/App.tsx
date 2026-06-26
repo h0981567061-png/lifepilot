@@ -136,6 +136,7 @@ interface AirportTransfer {
   vehicle: string;
   price: string;
   notes: string;
+  selected: boolean;
 }
 
 // A line "starts with a four-digit time" e.g. 2100, 2115, 0830
@@ -316,60 +317,40 @@ function detectMessageType(text: string): DetectionResult {
 
 function EventCard({
   event,
-  onChange,
+  onToggle,
 }: {
   event: Event;
-  onChange: (id: number, field: "keepInLifePilot" | "addToCalendar", value: boolean) => void;
+  onToggle: (id: number) => void;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-6 flex flex-col gap-4 hover:border-blue-500/40 transition-all duration-200">
-      <h3 className="text-xl font-semibold text-white">{event.title}</h3>
-
-      <div className="grid grid-cols-1 gap-2 text-sm text-gray-400">
-        <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          <span>{event.date || <span className="italic text-gray-600">未偵測到日期</span>}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span>{event.time || <span className="italic text-gray-600">未偵測到時間</span>}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-          <span>{event.location || <span className="italic text-gray-600">未偵測到地點</span>}</span>
-        </div>
-      </div>
-
-      <div className="border-t border-white/10 pt-4 flex flex-col gap-3">
-        <label className="flex items-center gap-3 cursor-pointer group">
-          <input
-            type="checkbox"
-            checked={event.keepInLifePilot}
-            onChange={(e) => onChange(event.id, "keepInLifePilot", e.target.checked)}
-            className="w-4 h-4 rounded accent-blue-500 cursor-pointer"
-          />
-          <span className="text-sm text-gray-300 group-hover:text-white transition-colors">
-            保存在 LifePilot
+    <div
+      className={`rounded-xl border p-4 flex items-start gap-4 cursor-pointer transition-all duration-150 select-none ${
+        event.keepInLifePilot
+          ? "border-blue-500/40 bg-blue-500/5"
+          : "border-white/10 bg-white/5 opacity-50"
+      }`}
+      onClick={() => onToggle(event.id)}
+    >
+      <input
+        type="checkbox"
+        checked={event.keepInLifePilot}
+        onChange={() => onToggle(event.id)}
+        onClick={(e) => e.stopPropagation()}
+        className="mt-0.5 w-4 h-4 rounded accent-blue-500 cursor-pointer shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-white leading-snug">{event.title}</p>
+        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-sm">
+          <span className={event.date ? "text-gray-400" : "italic text-gray-600"}>
+            {event.date || "無日期"}
           </span>
-        </label>
-        <label className="flex items-center gap-3 cursor-pointer group">
-          <input
-            type="checkbox"
-            checked={event.addToCalendar}
-            onChange={(e) => onChange(event.id, "addToCalendar", e.target.checked)}
-            className="w-4 h-4 rounded accent-blue-500 cursor-pointer"
-          />
-          <span className="text-sm text-gray-300 group-hover:text-white transition-colors">
-            加入行事曆
+          <span className={event.time ? "text-gray-400" : "italic text-gray-600"}>
+            {event.time || "無時間"}
           </span>
-        </label>
+          <span className={event.location ? "text-gray-400" : "italic text-gray-600"}>
+            {event.location || "無地點"}
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -387,7 +368,13 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-function AirportTransferCard({ transfer }: { transfer: AirportTransfer }) {
+function AirportTransferCard({
+  transfer,
+  onToggle,
+}: {
+  transfer: AirportTransfer;
+  onToggle: (id: number) => void;
+}) {
   const typeColor =
     transfer.type === "接機"
       ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
@@ -396,36 +383,49 @@ function AirportTransferCard({ transfer }: { transfer: AirportTransfer }) {
       : "bg-white/5 text-gray-400 border-white/10";
 
   return (
-    <div className="rounded-2xl border border-amber-500/20 bg-white/5 backdrop-blur-sm p-6 flex flex-col gap-4 hover:border-amber-500/40 transition-all duration-200">
-      {/* Header row: time + type badge + flight */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-2xl font-bold text-amber-300 tracking-widest">
-          {transfer.time.slice(0, 2)}:{transfer.time.slice(2)}
-        </span>
-        {transfer.type && (
-          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${typeColor}`}>
-            {transfer.type}
+    <div
+      className={`rounded-xl border p-4 flex items-start gap-4 cursor-pointer transition-all duration-150 select-none ${
+        transfer.selected
+          ? "border-amber-500/40 bg-amber-500/5"
+          : "border-white/10 bg-white/5 opacity-50"
+      }`}
+      onClick={() => onToggle(transfer.id)}
+    >
+      <input
+        type="checkbox"
+        checked={transfer.selected}
+        onChange={() => onToggle(transfer.id)}
+        onClick={(e) => e.stopPropagation()}
+        className="mt-1 w-4 h-4 rounded accent-amber-500 cursor-pointer shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        {/* Header row: time + type badge + flight */}
+        <div className="flex items-center gap-3 flex-wrap mb-2">
+          <span className="text-xl font-bold text-amber-300 tracking-widest">
+            {transfer.time.slice(0, 2)}:{transfer.time.slice(2)}
           </span>
-        )}
-        {transfer.flight && (
-          <span className="text-sm font-mono text-gray-300 bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">
-            ✈ {transfer.flight}
-          </span>
+          {transfer.type && (
+            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${typeColor}`}>
+              {transfer.type}
+            </span>
+          )}
+          {transfer.flight && (
+            <span className="text-sm font-mono text-gray-300 bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">
+              {transfer.flight}
+            </span>
+          )}
+        </div>
+        {/* Detail fields */}
+        <div className="flex flex-col gap-1">
+          <Field label="地區" value={transfer.district} />
+          <Field label="車型" value={transfer.vehicle} />
+          <Field label="費用" value={transfer.price ? `NT$ ${transfer.price}` : ""} />
+          <Field label="備註" value={transfer.notes} />
+        </div>
+        {!transfer.district && !transfer.vehicle && !transfer.price && !transfer.notes && (
+          <p className="text-xs text-gray-600 italic">無詳細資料</p>
         )}
       </div>
-
-      {/* Detail fields */}
-      <div className="flex flex-col gap-1.5">
-        <Field label="地區" value={transfer.district} />
-        <Field label="車型" value={transfer.vehicle} />
-        <Field label="費用" value={transfer.price ? `NT$ ${transfer.price}` : ""} />
-        <Field label="備註" value={transfer.notes} />
-      </div>
-
-      {/* Fallback when no fields parsed */}
-      {!transfer.district && !transfer.vehicle && !transfer.price && !transfer.notes && (
-        <p className="text-xs text-gray-600 italic">無詳細資料</p>
-      )}
     </div>
   );
 }
@@ -452,7 +452,7 @@ export default function App() {
     const type = detectParserType(trimmed);
     setParserType(type);
     if (type === "airport") {
-      setTransfers(parseAirportTransfers(trimmed));
+      setTransfers(parseAirportTransfers(trimmed).map((t) => ({ ...t, selected: true })));
       setEvents([]);
     } else {
       setEvents(parseEvents(trimmed));
@@ -461,35 +461,49 @@ export default function App() {
     setAnalyzed(true);
   }
 
-  function handleChange(id: number, field: "keepInLifePilot" | "addToCalendar", value: boolean) {
+  function handleToggleEvent(id: number) {
     setEvents((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, [field]: value } : e))
+      prev.map((e) => (e.id === id ? { ...e, keepInLifePilot: !e.keepInLifePilot } : e))
     );
+  }
+
+  function handleToggleTransfer(id: number) {
+    setTransfers((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, selected: !t.selected } : t))
+    );
+  }
+
+  function handleSelectAll() {
+    if (parserType === "airport") {
+      setTransfers((prev) => prev.map((t) => ({ ...t, selected: true })));
+    } else {
+      setEvents((prev) => prev.map((e) => ({ ...e, keepInLifePilot: true })));
+    }
+  }
+
+  function handleClearAll() {
+    if (parserType === "airport") {
+      setTransfers((prev) => prev.map((t) => ({ ...t, selected: false })));
+    } else {
+      setEvents((prev) => prev.map((e) => ({ ...e, keepInLifePilot: false })));
+    }
   }
 
   function handleCreate() {
     if (parserType === "airport") {
-      alert(`已建立 ${transfers.length} 筆接送機行程到 LifePilot。`);
+      const selected = transfers.filter((t) => t.selected);
+      alert(`已建立 ${selected.length} 筆接送機行程到 LifePilot。`);
     } else {
-      const kept = events.filter((e) => e.keepInLifePilot);
-      const calendarItems = events.filter((e) => e.addToCalendar);
-      alert(
-        `已建立 ${kept.length} 個活動到 LifePilot${calendarItems.length > 0 ? `，並將 ${calendarItems.length} 個活動加入行事曆` : ""}。`
-      );
+      const selected = events.filter((e) => e.keepInLifePilot);
+      alert(`已建立 ${selected.length} 個活動到 LifePilot。`);
     }
   }
 
-  const resultCount =
-    parserType === "airport" ? transfers.length : events.length;
-
-  const resultLabel =
+  const totalCount = parserType === "airport" ? transfers.length : events.length;
+  const selectedCount =
     parserType === "airport"
-      ? resultCount > 0
-        ? `共找到 ${resultCount} 筆接送機行程`
-        : "未找到接送機行程，請確認每筆資料以四位數時間開頭（如：2100）"
-      : resultCount > 0
-      ? `共找到 ${resultCount} 個活動`
-      : "未找到任何活動，請確認訊息不為空白";
+      ? transfers.filter((t) => t.selected).length
+      : events.filter((e) => e.keepInLifePilot).length;
 
   const PLACEHOLDER = `美術班 7/30
 復旦國小
@@ -584,30 +598,65 @@ export default function App() {
               </div>
             )}
 
-            <div className="mb-6">
-              <h2 className="text-lg font-semibold text-gray-200 mb-1">分析結果</h2>
-              <p className="text-sm text-gray-500">{resultLabel}</p>
-            </div>
-
-            {resultCount > 0 && (
+            {/* ── Preview section ── */}
+            {totalCount > 0 ? (
               <>
-                <div className="flex flex-col gap-4 mb-8">
+                {/* Heading + Select All / Clear All */}
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-white">
+                      AI 找到{" "}
+                      <span className={parserType === "airport" ? "text-amber-300" : "text-blue-400"}>
+                        {totalCount}
+                      </span>{" "}
+                      {parserType === "airport" ? "筆接送機行程" : "個活動"}
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-0.5">
+                      已選取 {selectedCount} / {totalCount}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSelectAll}
+                      className="px-3 py-1.5 rounded-lg text-sm text-blue-400 border border-blue-500/30 hover:bg-blue-500/10 transition-all duration-150"
+                    >
+                      全選
+                    </button>
+                    <button
+                      onClick={handleClearAll}
+                      className="px-3 py-1.5 rounded-lg text-sm text-gray-400 border border-white/10 hover:bg-white/5 transition-all duration-150"
+                    >
+                      清除
+                    </button>
+                  </div>
+                </div>
+
+                {/* Cards */}
+                <div className="flex flex-col gap-3 mb-8">
                   {parserType === "airport"
                     ? transfers.map((t) => (
-                        <AirportTransferCard key={t.id} transfer={t} />
+                        <AirportTransferCard key={t.id} transfer={t} onToggle={handleToggleTransfer} />
                       ))
                     : events.map((event) => (
-                        <EventCard key={event.id} event={event} onChange={handleChange} />
+                        <EventCard key={event.id} event={event} onToggle={handleToggleEvent} />
                       ))}
                 </div>
 
+                {/* Create Selected button */}
                 <button
                   onClick={handleCreate}
-                  className="w-full py-3.5 rounded-xl bg-white text-gray-950 font-semibold text-base hover:bg-gray-100 active:bg-gray-200 transition-all duration-150 shadow-lg"
+                  disabled={selectedCount === 0}
+                  className="w-full py-3.5 rounded-xl font-semibold text-base transition-all duration-150 shadow-lg disabled:opacity-40 disabled:cursor-not-allowed bg-white text-gray-950 hover:bg-gray-100 active:bg-gray-200"
                 >
-                  建立
+                  建立所選（{selectedCount}）
                 </button>
               </>
+            ) : (
+              <p className="text-sm text-gray-500 mt-2">
+                {parserType === "airport"
+                  ? "未找到接送機行程，請確認每筆資料以四位數時間開頭（如：2100）"
+                  : "未找到任何活動，請確認訊息不為空白"}
+              </p>
             )}
           </>
         )}
