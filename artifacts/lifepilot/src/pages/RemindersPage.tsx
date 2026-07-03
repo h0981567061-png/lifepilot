@@ -89,6 +89,26 @@ const TYPE_BADGE: Record<ReminderType, { label: string; className: string }> = {
     label: "待確認",
     className: "bg-white/10 text-gray-400 border-white/15",
   },
+  Income: {
+    label: "收入",
+    className: "bg-teal-500/15 text-teal-300 border-teal-500/25",
+  },
+  Expense: {
+    label: "支出",
+    className: "bg-red-500/15 text-red-300 border-red-500/25",
+  },
+  Work: {
+    label: "工作",
+    className: "bg-indigo-500/15 text-indigo-300 border-indigo-500/25",
+  },
+  Family: {
+    label: "家庭",
+    className: "bg-pink-500/15 text-pink-300 border-pink-500/25",
+  },
+  General: {
+    label: "一般",
+    className: "bg-gray-500/15 text-gray-300 border-gray-500/25",
+  },
 };
 
 // ─── Reminder card ────────────────────────────────────────────────────────────

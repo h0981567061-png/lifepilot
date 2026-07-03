@@ -1,7 +1,7 @@
 // ─── AI Parser — calls the /api/parse backend endpoint ────────────────────
 //
 // The frontend never touches OPENAI_API_KEY.
-// The API server reads OPENAI_API_KEY from its environment and proxies the call.
+// The API server reads GROQ_API_KEY from its environment and proxies the call.
 // If the server is unavailable, returns 503, or returns malformed JSON,
 // the caller (App.tsx) falls back to local rule-based parsers.
 
@@ -24,6 +24,9 @@ export interface AIEvent {
   items: string[];
   notes: string | null;
   confidence: number;
+  category: string | null;
+  source: string | null;
+  merchant: string | null;
 }
 
 export interface AIParseResult {
@@ -31,17 +34,8 @@ export interface AIParseResult {
 }
 
 /**
- * Always returns true — the frontend no longer checks for an API key.
- * The server handles key presence; if the key is missing the endpoint
- * returns 503 and App.tsx falls back to rule parsers automatically.
- */
-export function isAIConfigured(): boolean {
-  return true;
-}
-
-/**
  * POST /api/parse with the user's text.
- * The server calls OpenAI, validates the JSON, and returns structured events.
+ * The server calls Groq, validates the JSON, and returns structured events.
  * Throws on any non-2xx response or malformed payload so the caller can
  * fall back to local rule-based parsers.
  */

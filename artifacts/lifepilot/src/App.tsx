@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { parseWithAI, type AIEvent } from "./aiParser";
+import type { PreviewItem } from "./previewTypes";
+import { TYPE_LABEL, emptyPreviewItem } from "./previewTypes";
+import { PreviewItemCard } from "./components/PreviewItemCard";
 import { normalizeTime, normalizeDate } from "./utils";
 import {
   addReminders,
@@ -473,7 +476,7 @@ type MessageTypeName =
   | "Pending";
 
 interface DetectionResult {
-  type: MessageTypeName;
+  type: string;
   label: string;       // Traditional Chinese label
   confidence: number;  // 0–99
   color: string;       // Tailwind accent name
@@ -556,7 +559,7 @@ function detectMessageType(text: string): DetectionResult {
 // ─── detectParserType — thin wrapper that shares logic with detectMessageType ─
 
 function detectParserType(text: string): MessageTypeName {
-  return detectMessageType(text).type;
+  return detectMessageType(text).type as MessageTypeName;
 }
 
 // ─── Apple Reminders builder ──────────────────────────────────────────────────
@@ -754,372 +757,6 @@ function accentCheckbox(color: string) {
   );
 }
 
-// ─── Course card ──────────────────────────────────────────────────────────────
-
-function EventCard({
-  event,
-  onToggle,
-  onDateChange,
-}: {
-  event: Event;
-  onToggle: (id: number) => void;
-  onDateChange: (id: number, date: string) => void;
-}) {
-  return (
-    <div
-      className={`rounded-xl border p-4 flex items-start gap-4 cursor-pointer transition-all duration-150 select-none ${
-        event.keepInLifePilot
-          ? "border-blue-500/40 bg-blue-500/5"
-          : "border-white/10 bg-white/5 opacity-50"
-      }`}
-      onClick={() => onToggle(event.id)}
-    >
-      <input
-        type="checkbox"
-        checked={event.keepInLifePilot}
-        onChange={() => onToggle(event.id)}
-        onClick={(e) => e.stopPropagation()}
-        className="mt-0.5 w-4 h-4 rounded accent-blue-500 cursor-pointer shrink-0"
-      />
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-white leading-snug">{event.title}</p>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-          <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
-            {!event.date && (
-              <span className="text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                ⚠ 無日期
-              </span>
-            )}
-            <input
-              type="date"
-              value={normalizeDate(event.date)}
-              onChange={(e) => onDateChange(event.id, e.target.value)}
-              className="text-xs rounded-lg px-2 py-0.5 bg-white/5 border border-white/10 text-gray-300 focus:outline-none focus:border-blue-500/50"
-              style={{ colorScheme: "dark" }}
-            />
-          </div>
-          <span className={event.time ? "text-gray-400" : "italic text-gray-600"}>
-            {event.time || "無時間"}
-          </span>
-          <span className={event.location ? "text-gray-400" : "italic text-gray-600"}>
-            {event.location || "無地點"}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Airport Transfer card ────────────────────────────────────────────────────
-
-function Field({ label, value, labelColor = "text-amber-400/70" }: {
-  label: string;
-  value: string;
-  labelColor?: string;
-}) {
-  if (!value) return null;
-  return (
-    <div className="flex items-start gap-2 text-sm">
-      <span className={`${labelColor} shrink-0 w-14 text-right`}>{label}</span>
-      <span className="text-gray-200">{value}</span>
-    </div>
-  );
-}
-
-function AirportTransferCard({
-  transfer,
-  onToggle,
-  onDateChange,
-}: {
-  transfer: AirportTransfer;
-  onToggle: (id: number) => void;
-  onDateChange: (id: number, date: string) => void;
-}) {
-  const typeColor =
-    transfer.type === "接機"
-      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
-      : transfer.type === "送機"
-      ? "bg-sky-500/15 text-sky-300 border-sky-500/30"
-      : "bg-white/5 text-gray-400 border-white/10";
-
-  const displayTime = normalizeTime(transfer.time) || transfer.time;
-
-  return (
-    <div
-      className={`rounded-xl border p-4 flex items-start gap-4 cursor-pointer transition-all duration-150 select-none ${
-        transfer.selected
-          ? "border-amber-500/40 bg-amber-500/5"
-          : "border-white/10 bg-white/5 opacity-50"
-      }`}
-      onClick={() => onToggle(transfer.id)}
-    >
-      <input
-        type="checkbox"
-        checked={transfer.selected}
-        onChange={() => onToggle(transfer.id)}
-        onClick={(e) => e.stopPropagation()}
-        className="mt-1 w-4 h-4 rounded accent-amber-500 cursor-pointer shrink-0"
-      />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-3 flex-wrap mb-2">
-          <span className="text-xl font-bold text-amber-300 tracking-widest">
-            {displayTime}
-          </span>
-          {transfer.type && (
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${typeColor}`}>
-              {transfer.type}
-            </span>
-          )}
-          {transfer.flight && (
-            <span className="text-sm font-mono text-gray-300 bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">
-              {transfer.flight}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 mb-2" onClick={(e) => e.stopPropagation()}>
-          {!transfer.date && (
-            <span className="text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/25 px-2 py-0.5 rounded-full whitespace-nowrap">
-              ⚠ 尚未設定日期
-            </span>
-          )}
-          <input
-            type="date"
-            value={transfer.date}
-            onChange={(e) => onDateChange(transfer.id, e.target.value)}
-            className={`text-xs rounded-lg px-2 py-1 bg-white/5 border transition-colors focus:outline-none focus:border-blue-500/50 ${
-              transfer.date
-                ? "text-gray-300 border-white/10"
-                : "text-gray-500 border-amber-500/30 hover:border-amber-500/50"
-            }`}
-            style={{ colorScheme: "dark" }}
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Field label="地區" value={transfer.district} />
-          <Field label="車型" value={transfer.vehicle} />
-          <Field label="費用" value={transfer.price ? `${transfer.price} 元` : ""} />
-          <Field label="備註" value={transfer.notes} />
-        </div>
-        {!transfer.district && !transfer.vehicle && !transfer.price && !transfer.notes && (
-          <p className="text-xs text-gray-600 italic">無詳細資料</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Medical card ─────────────────────────────────────────────────────────────
-
-function MedicalCard({
-  item,
-  onToggle,
-  onDateChange,
-}: {
-  item: MedicalItem;
-  onToggle: (id: number) => void;
-  onDateChange: (id: number, date: string) => void;
-}) {
-  return (
-    <div
-      className={`rounded-xl border p-4 flex items-start gap-4 cursor-pointer transition-all duration-150 select-none ${
-        item.selected
-          ? "border-rose-500/40 bg-rose-500/5"
-          : "border-white/10 bg-white/5 opacity-50"
-      }`}
-      onClick={() => onToggle(item.id)}
-    >
-      <input
-        type="checkbox"
-        checked={item.selected}
-        onChange={() => onToggle(item.id)}
-        onClick={(e) => e.stopPropagation()}
-        className="mt-0.5 w-4 h-4 rounded accent-rose-500 cursor-pointer shrink-0"
-      />
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-white leading-snug mb-2">
-          {item.hospital || "醫療預約"}
-          {item.department && (
-            <span className="ml-2 text-sm font-normal text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
-              {item.department}
-            </span>
-          )}
-        </p>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-          <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
-            {!item.date && (
-              <span className="text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                ⚠ 無日期
-              </span>
-            )}
-            <input
-              type="date"
-              value={normalizeDate(item.date)}
-              onChange={(e) => onDateChange(item.id, e.target.value)}
-              className="text-xs rounded-lg px-2 py-0.5 bg-white/5 border border-white/10 text-gray-300 focus:outline-none focus:border-blue-500/50"
-              style={{ colorScheme: "dark" }}
-            />
-          </div>
-          <span className={item.time ? "text-gray-400" : "italic text-gray-600"}>
-            {item.time || "無時間"}
-          </span>
-        </div>
-        {item.notes && (
-          <p className="mt-2 text-xs text-gray-500 whitespace-pre-line leading-relaxed">
-            {item.notes}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Shopping card ────────────────────────────────────────────────────────────
-
-function ShoppingCard({
-  item,
-  onToggle,
-  onDateChange,
-}: {
-  item: ShoppingItem;
-  onToggle: (id: number) => void;
-  onDateChange: (id: number, date: string) => void;
-}) {
-  return (
-    <div
-      className={`rounded-xl border p-4 flex items-start gap-4 cursor-pointer transition-all duration-150 select-none ${
-        item.selected
-          ? "border-purple-500/40 bg-purple-500/5"
-          : "border-white/10 bg-white/5 opacity-50"
-      }`}
-      onClick={() => onToggle(item.id)}
-    >
-      <input
-        type="checkbox"
-        checked={item.selected}
-        onChange={() => onToggle(item.id)}
-        onClick={(e) => e.stopPropagation()}
-        className="mt-0.5 w-4 h-4 rounded accent-purple-500 cursor-pointer shrink-0"
-      />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-2 flex-wrap">
-          <p className="font-semibold text-white leading-snug">購物清單</p>
-          <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
-            {!item.date && (
-              <span className="text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                ⚠ 無日期
-              </span>
-            )}
-            <input
-              type="date"
-              value={normalizeDate(item.date)}
-              onChange={(e) => onDateChange(item.id, e.target.value)}
-              className="text-xs rounded-lg px-2 py-0.5 bg-white/5 border border-white/10 text-gray-300 focus:outline-none focus:border-blue-500/50"
-              style={{ colorScheme: "dark" }}
-            />
-          </div>
-        </div>
-        <ul className="text-sm text-gray-300 space-y-0.5 list-none">
-          {item.lines.map((l, i) => (
-            <li key={i} className="flex items-start gap-2">
-              <span className="text-purple-500/60 mt-0.5">·</span>
-              <span>{l}</span>
-            </li>
-          ))}
-        </ul>
-        {item.amount && (
-          <p className="mt-2 text-sm font-semibold text-purple-300">{item.amount}</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Payment card ─────────────────────────────────────────────────────────────
-
-function PaymentCard({
-  item,
-  onToggle,
-  onDueDateChange,
-}: {
-  item: PaymentItem;
-  onToggle: (id: number) => void;
-  onDueDateChange: (id: number, date: string) => void;
-}) {
-  return (
-    <div
-      className={`rounded-xl border p-4 flex items-start gap-4 cursor-pointer transition-all duration-150 select-none ${
-        item.selected
-          ? "border-emerald-500/40 bg-emerald-500/5"
-          : "border-white/10 bg-white/5 opacity-50"
-      }`}
-      onClick={() => onToggle(item.id)}
-    >
-      <input
-        type="checkbox"
-        checked={item.selected}
-        onChange={() => onToggle(item.id)}
-        onClick={(e) => e.stopPropagation()}
-        className="mt-0.5 w-4 h-4 rounded accent-emerald-500 cursor-pointer shrink-0"
-      />
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-white leading-snug mb-2">
-          {item.name || "付款提醒"}
-        </p>
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-            <span className="text-emerald-400/70 text-sm shrink-0 w-14 text-right">到期</span>
-            <input
-              type="date"
-              value={normalizeDate(item.dueDate)}
-              onChange={(e) => onDueDateChange(item.id, e.target.value)}
-              className="text-xs rounded-lg px-2 py-0.5 bg-white/5 border border-white/10 text-gray-300 focus:outline-none focus:border-blue-500/50"
-              style={{ colorScheme: "dark" }}
-            />
-          </div>
-          <Field label="金額" value={item.amount}   labelColor="text-emerald-400/70" />
-          <Field label="帳號" value={item.account}  labelColor="text-emerald-400/70" />
-          <Field label="備註" value={item.notes}    labelColor="text-emerald-400/70" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Pending card ─────────────────────────────────────────────────────────────
-
-function PendingCard({
-  item,
-  onToggle,
-}: {
-  item: PendingItem;
-  onToggle: (id: number) => void;
-}) {
-  return (
-    <div
-      className={`rounded-xl border p-4 flex items-start gap-4 cursor-pointer transition-all duration-150 select-none ${
-        item.selected
-          ? "border-white/20 bg-white/5"
-          : "border-white/10 bg-white/5 opacity-50"
-      }`}
-      onClick={() => onToggle(item.id)}
-    >
-      <input
-        type="checkbox"
-        checked={item.selected}
-        onChange={() => onToggle(item.id)}
-        onClick={(e) => e.stopPropagation()}
-        className="mt-0.5 w-4 h-4 rounded accent-gray-500 cursor-pointer shrink-0"
-      />
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-gray-400 leading-snug mb-2">待確認</p>
-        <p className="text-sm text-gray-500 whitespace-pre-line leading-relaxed">
-          {item.text}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 // ─── Bottom navigation ────────────────────────────────────────────────────────
@@ -1177,16 +814,9 @@ function BottomNav({
 
 export default function App() {
   const [message, setMessage] = useState("");
-  const [events, setEvents] = useState<Event[]>([]);
-  const [transfers, setTransfers] = useState<AirportTransfer[]>([]);
-  const [medicalItems, setMedicalItems] = useState<MedicalItem[]>([]);
-  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
-  const [paymentItems, setPaymentItems] = useState<PaymentItem[]>([]);
-  const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
-  const [parserType, setParserType] = useState<MessageTypeName>("Course");
+  const [previewItems, setPreviewItems] = useState<PreviewItem[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [detectionResult, setDetectionResult] = useState<DetectionResult | null>(null);
-  const [reminderItems, setReminderItems] = useState<ReminderItem[]>([]);
-  const [calendarItems, setCalendarItems] = useState<CalendarItem[]>([]);
   const [analyzed, setAnalyzed] = useState(false);
   const [error, setError] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -1229,30 +859,13 @@ export default function App() {
     setEditingReminderId(null);
   }
 
-  function handleTransferDateChange(id: number, date: string) {
-    setTransfers((prev) => prev.map((t) => (t.id === id ? { ...t, date } : t)));
-  }
-  function handleEventDateChange(id: number, date: string) {
-    setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, date } : e)));
-  }
-  function handleMedicalDateChange(id: number, date: string) {
-    setMedicalItems((prev) => prev.map((m) => (m.id === id ? { ...m, date } : m)));
-  }
-  function handleShoppingDateChange(id: number, date: string) {
-    setShoppingItems((prev) => prev.map((s) => (s.id === id ? { ...s, date } : s)));
-  }
-  function handlePaymentDueDateChange(id: number, date: string) {
-    setPaymentItems((prev) => prev.map((p) => (p.id === id ? { ...p, dueDate: date } : p)));
-  }
-
   function handleBulkApply(mode: "all" | "missing-only") {
     if (!bulkDateValue) return;
-    const apply = (current: string) =>
-      mode === "all" || !current ? bulkDateValue : current;
-    setTransfers((prev) => prev.map((t) => (t.selected ? { ...t, date: apply(t.date) } : t)));
-    setEvents((prev) => prev.map((e) => (e.keepInLifePilot ? { ...e, date: apply(e.date) } : e)));
-    setMedicalItems((prev) => prev.map((m) => (m.selected ? { ...m, date: apply(m.date) } : m)));
-    setShoppingItems((prev) => prev.map((s) => (s.selected ? { ...s, date: apply(s.date) } : s)));
+    setPreviewItems((prev) =>
+      prev.map((item) =>
+        mode === "all" || !item.date ? { ...item, date: bulkDateValue } : item
+      )
+    );
     setBulkDatePickerOpen(false);
     setBulkDateValue("");
     setBulkConfirmNeeded("none");
@@ -1260,12 +873,7 @@ export default function App() {
 
   function handleBulkApplyClick() {
     if (!bulkDateValue) return;
-    const hasExisting = [
-      ...transfers.filter((t) => t.selected && t.date),
-      ...events.filter((e) => e.keepInLifePilot && e.date),
-      ...medicalItems.filter((m) => m.selected && m.date),
-      ...shoppingItems.filter((s) => s.selected && s.date),
-    ].length > 0;
+    const hasExisting = previewItems.some((item) => item.date);
     if (hasExisting) {
       setBulkConfirmNeeded("has-dates");
     } else {
@@ -1274,171 +882,156 @@ export default function App() {
   }
 
   function resetParsed() {
-    setEvents([]);
-    setTransfers([]);
-    setMedicalItems([]);
-    setShoppingItems([]);
-    setPaymentItems([]);
-    setPendingItems([]);
-    setReminderItems([]);
-    setCalendarItems([]);
+    setPreviewItems([]);
   }
 
-  // ── AI type → MessageTypeName ──────────────────────────────────────────────
-  function aiTypeToMessageType(type: string): MessageTypeName {
-    const map: Record<string, MessageTypeName> = {
-      "Course":           "Course",
-      "Airport Transfer": "Airport Transfer",
-      "Medical":          "Medical",
-      "Shopping":         "Shopping",
-      "Payment":          "Payment",
-      "Work":             "Pending",
-      "Family":           "Pending",
-      "Pending":          "Pending",
-    };
-    return map[type] ?? "Pending";
-  }
-
-  // ── Map AI events → existing state arrays ──────────────────────────────────
+  // ── Map AI events → PreviewItem[] ─────────────────────────────────────────
   function mapAIEvents(aiEvents: AIEvent[]): {
-    parsedEvents: Event[];
-    parsedTransfers: AirportTransfer[];
-    parsedMedical: MedicalItem[];
-    parsedShopping: ShoppingItem[];
-    parsedPayment: PaymentItem[];
-    parsedPending: PendingItem[];
-    primaryType: MessageTypeName;
+    previewItems: PreviewItem[];
     primaryLabel: string;
     avgConfidence: number;
   } {
-    const parsedEvents: Event[] = [];
-    const parsedTransfers: AirportTransfer[] = [];
-    const parsedMedical: MedicalItem[] = [];
-    const parsedShopping: ShoppingItem[] = [];
-    const parsedPayment: PaymentItem[] = [];
-    const parsedPending: PendingItem[] = [];
-    let totalConfidence = 0;
-    let primaryType: MessageTypeName = "Pending";
+    const ALLOWED = new Set([
+      "Course", "Airport Transfer", "Shopping", "Payment", "Medical",
+      "Income", "Expense", "Work", "Family", "General", "Pending",
+    ]);
+
+    let totalConf = 0;
+    let primaryLabel = "一般事項";
     let isFirst = true;
 
-    let evIdx = 1, trIdx = 1, mdIdx = 1, shIdx = 1, pyIdx = 1, pdIdx = 1;
-
-    for (const e of aiEvents) {
-      totalConfidence += typeof e.confidence === "number" ? e.confidence : 50;
-      const mtype = aiTypeToMessageType(e.type);
-      if (isFirst) { primaryType = mtype; isFirst = false; }
-
-      switch (mtype) {
-        case "Course":
-          parsedEvents.push({
-            id: evIdx++,
-            title: e.title ?? "（無標題）",
-            date: e.date ?? "",
-            time: e.startTime ?? "",
-            location: e.location ?? "",
-            keepInLifePilot: true,
-            addToCalendar: false,
-          });
-          break;
-        case "Airport Transfer":
-          parsedTransfers.push({
-            id: trIdx++,
-            date: normalizeDate(e.date ?? ""),
-            time: e.startTime ?? "",
-            flight: e.flightNumber ?? "",
-            type: e.transferType ?? "",
-            district: e.district ?? "",
-            vehicle: e.vehicleType ?? "",
-            price: e.price ?? "",
-            notes: e.notes ?? "",
-            selected: true,
-          });
-          break;
-        case "Medical":
-          parsedMedical.push({
-            id: mdIdx++,
-            date: e.date ?? "",
-            time: e.startTime ?? "",
-            hospital: e.hospital ?? e.location ?? "",
-            department: e.department ?? "",
-            notes: e.notes ?? "",
-            selected: true,
-          });
-          break;
-        case "Shopping":
-          parsedShopping.push({
-            id: shIdx++,
-            date: e.date ?? "",
-            lines: e.items?.length ? e.items : (e.notes ? [e.notes] : []),
-            amount: e.amount ?? "",
-            selected: true,
-          });
-          break;
-        case "Payment":
-          parsedPayment.push({
-            id: pyIdx++,
-            name: e.title ?? "",
-            dueDate: e.dueDate ?? "",
-            amount: e.amount ?? "",
-            account: "",
-            notes: e.notes ?? "",
-            selected: true,
-          });
-          break;
-        default:
-          parsedPending.push({
-            id: pdIdx++,
-            text: [e.title, e.date, e.notes, ...(e.items ?? [])]
-              .filter(Boolean).join("\n"),
-            selected: true,
-          });
+    const items: PreviewItem[] = aiEvents.map((e) => {
+      totalConf += typeof e.confidence === "number" ? e.confidence : 50;
+      const type = (ALLOWED.has(e.type) ? e.type : "General") as PreviewItem["type"];
+      if (isFirst) {
+        primaryLabel = TYPE_LABEL[type] ?? "一般事項";
+        isFirst = false;
       }
-    }
-
-    const LABEL_MAP: Record<MessageTypeName, string> = {
-      "Airport Transfer": "接送機",
-      "Course":           "課程",
-      "Medical":          "醫療",
-      "Shopping":         "購物",
-      "Payment":          "付款",
-      "Pending":          "待確認",
-    };
+      return {
+        ...emptyPreviewItem(type),
+        type,
+        category: e.category ?? "",
+        title: e.title ?? "",
+        date: normalizeDate(e.date ?? ""),
+        startTime: normalizeTime(e.startTime ?? ""),
+        endTime: normalizeTime(e.endTime ?? ""),
+        location: e.location ?? "",
+        notes: e.notes ?? "",
+        flightNumber: e.flightNumber ?? "",
+        transferType: e.transferType ?? "",
+        district: e.district ?? "",
+        vehicleType: e.vehicleType ?? "",
+        price: e.price ?? "",
+        shoppingItems:
+          Array.isArray(e.items) && e.items.length > 0
+            ? e.items
+            : e.notes
+            ? [e.notes]
+            : [],
+        amount: e.amount ?? "",
+        account: "",
+        dueDate: normalizeDate(e.dueDate ?? ""),
+        hospital: e.hospital ?? e.location ?? "",
+        department: e.department ?? "",
+        source: e.source ?? "",
+        merchant: e.merchant ?? "",
+        pendingText:
+          type === "Pending"
+            ? [e.title, e.notes, ...(e.items ?? [])].filter(Boolean).join("\n")
+            : "",
+      };
+    });
 
     return {
-      parsedEvents, parsedTransfers, parsedMedical,
-      parsedShopping, parsedPayment, parsedPending,
-      primaryType,
-      primaryLabel: LABEL_MAP[primaryType] ?? "待確認",
-      avgConfidence: aiEvents.length > 0
-        ? Math.round(totalConfidence / aiEvents.length) : 0,
+      previewItems: items,
+      primaryLabel,
+      avgConfidence:
+        aiEvents.length > 0 ? Math.round(totalConf / aiEvents.length) : 0,
     };
   }
 
-  // ── Rule-based analyze (shared by both paths) ───────────────────────────────
+  // ── Rule-based fallback ─────────────────────────────────────────────────────
   function runLocalParsers(trimmed: string) {
     const detection = detectMessageType(trimmed);
     setDetectionResult(detection);
-    setParserType(detection.type);
+
+    let items: PreviewItem[] = [];
+
     switch (detection.type) {
       case "Airport Transfer":
-        setTransfers(parseAirportTransfers(trimmed).map((t) => ({ ...t, selected: true })));
+        items = parseAirportTransfers(trimmed).map((t) => ({
+          ...emptyPreviewItem("Airport Transfer"),
+          type: "Airport Transfer" as const,
+          title: [t.type, t.flight].filter(Boolean).join(" ") || "接送機",
+          date: normalizeDate(t.date),
+          startTime: normalizeTime(t.time),
+          flightNumber: t.flight,
+          transferType: t.type,
+          district: t.district,
+          vehicleType: t.vehicle,
+          price: t.price,
+          notes: t.notes,
+        }));
         break;
+
       case "Course":
-        setEvents(parseEvents(trimmed));
+        items = parseEvents(trimmed).map((e) => ({
+          ...emptyPreviewItem("Course"),
+          type: "Course" as const,
+          title: e.title,
+          date: normalizeDate(e.date),
+          startTime: normalizeTime(e.time),
+          location: e.location,
+        }));
         break;
+
       case "Medical":
-        setMedicalItems(parseMedical(trimmed));
+        items = parseMedical(trimmed).map((m) => ({
+          ...emptyPreviewItem("Medical"),
+          type: "Medical" as const,
+          title: [m.hospital, m.department].filter(Boolean).join(" ") || "醫療預約",
+          date: normalizeDate(m.date),
+          startTime: normalizeTime(m.time),
+          hospital: m.hospital,
+          department: m.department,
+          notes: m.notes,
+        }));
         break;
+
       case "Shopping":
-        setShoppingItems(parseShopping(trimmed));
+        items = parseShopping(trimmed).map((s) => ({
+          ...emptyPreviewItem("Shopping"),
+          type: "Shopping" as const,
+          title: "購物清單",
+          date: normalizeDate(s.date),
+          shoppingItems: s.lines,
+          amount: s.amount,
+        }));
         break;
+
       case "Payment":
-        setPaymentItems(parsePayment(trimmed));
+        items = parsePayment(trimmed).map((p) => ({
+          ...emptyPreviewItem("Payment"),
+          type: "Payment" as const,
+          title: p.name || "付款提醒",
+          date: normalizeDate(p.dueDate),
+          dueDate: normalizeDate(p.dueDate),
+          amount: p.amount,
+          account: p.account,
+          notes: p.notes,
+        }));
         break;
-      case "Pending":
+
       default:
-        setPendingItems(parsePending(trimmed));
+        items = parsePending(trimmed).map((p) => ({
+          ...emptyPreviewItem("Pending"),
+          type: "Pending" as const,
+          pendingText: p.text,
+          title: p.text || "待確認事項",
+        }));
     }
+
+    setPreviewItems(items);
   }
 
   async function handleAnalyze() {
@@ -1456,15 +1049,9 @@ export default function App() {
     try {
       const result = await parseWithAI(trimmed);
       const mapped = mapAIEvents(result.events);
-      setEvents(mapped.parsedEvents);
-      setTransfers(mapped.parsedTransfers);
-      setMedicalItems(mapped.parsedMedical);
-      setShoppingItems(mapped.parsedShopping);
-      setPaymentItems(mapped.parsedPayment);
-      setPendingItems(mapped.parsedPending);
-      setParserType(mapped.primaryType);
+      setPreviewItems(mapped.previewItems);
       setDetectionResult({
-        type: mapped.primaryType,
+        type: mapped.previewItems[0]?.type ?? "General",
         label: mapped.primaryLabel,
         confidence: mapped.avgConfidence,
         color: "blue",
@@ -1485,135 +1072,35 @@ export default function App() {
     setAnalyzed(true);
   }
 
-  function handleToggleEvent(id: number) {
-    setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, keepInLifePilot: !e.keepInLifePilot } : e)));
-  }
-  function handleToggleTransfer(id: number) {
-    setTransfers((prev) => prev.map((t) => (t.id === id ? { ...t, selected: !t.selected } : t)));
-  }
-  function handleToggleMedical(id: number) {
-    setMedicalItems((prev) => prev.map((m) => (m.id === id ? { ...m, selected: !m.selected } : m)));
-  }
-  function handleToggleShopping(id: number) {
-    setShoppingItems((prev) => prev.map((s) => (s.id === id ? { ...s, selected: !s.selected } : s)));
-  }
-  function handleTogglePayment(id: number) {
-    setPaymentItems((prev) => prev.map((p) => (p.id === id ? { ...p, selected: !p.selected } : p)));
-  }
-  function handleTogglePending(id: number) {
-    setPendingItems((prev) => prev.map((p) => (p.id === id ? { ...p, selected: !p.selected } : p)));
-  }
-
-  function handleSelectAll() {
-    if (aiSource === "ai") {
-      setTransfers((p) => p.map((t) => ({ ...t, selected: true })));
-      setEvents((p) => p.map((e) => ({ ...e, keepInLifePilot: true })));
-      setMedicalItems((p) => p.map((m) => ({ ...m, selected: true })));
-      setShoppingItems((p) => p.map((s) => ({ ...s, selected: true })));
-      setPaymentItems((p) => p.map((x) => ({ ...x, selected: true })));
-      setPendingItems((p) => p.map((x) => ({ ...x, selected: true })));
-      return;
-    }
-    switch (parserType) {
-      case "Airport Transfer": setTransfers((p) => p.map((t) => ({ ...t, selected: true }))); break;
-      case "Course":           setEvents((p) => p.map((e) => ({ ...e, keepInLifePilot: true }))); break;
-      case "Medical":          setMedicalItems((p) => p.map((m) => ({ ...m, selected: true }))); break;
-      case "Shopping":         setShoppingItems((p) => p.map((s) => ({ ...s, selected: true }))); break;
-      case "Payment":          setPaymentItems((p) => p.map((x) => ({ ...x, selected: true }))); break;
-      case "Pending":          setPendingItems((p) => p.map((x) => ({ ...x, selected: true }))); break;
-    }
-  }
-
-  function handleClearAll() {
-    if (aiSource === "ai") {
-      setTransfers((p) => p.map((t) => ({ ...t, selected: false })));
-      setEvents((p) => p.map((e) => ({ ...e, keepInLifePilot: false })));
-      setMedicalItems((p) => p.map((m) => ({ ...m, selected: false })));
-      setShoppingItems((p) => p.map((s) => ({ ...s, selected: false })));
-      setPaymentItems((p) => p.map((x) => ({ ...x, selected: false })));
-      setPendingItems((p) => p.map((x) => ({ ...x, selected: false })));
-      return;
-    }
-    switch (parserType) {
-      case "Airport Transfer": setTransfers((p) => p.map((t) => ({ ...t, selected: false }))); break;
-      case "Course":           setEvents((p) => p.map((e) => ({ ...e, keepInLifePilot: false }))); break;
-      case "Medical":          setMedicalItems((p) => p.map((m) => ({ ...m, selected: false }))); break;
-      case "Shopping":         setShoppingItems((p) => p.map((s) => ({ ...s, selected: false }))); break;
-      case "Payment":          setPaymentItems((p) => p.map((x) => ({ ...x, selected: false }))); break;
-      case "Pending":          setPendingItems((p) => p.map((x) => ({ ...x, selected: false }))); break;
-    }
-  }
-
   function buildNewReminders(): Reminder[] {
     const now = new Date().toISOString();
     const uid = () => crypto.randomUUID();
-    const results: Reminder[] = [];
-    const includeAll = aiSource === "ai";
-
-    if (includeAll || parserType === "Course") {
-      for (const e of events.filter((ev) => ev.keepInLifePilot)) {
-        results.push({
-          id: uid(), type: "Course", completed: false, createdAt: now,
-          title: e.title, date: normalizeDate(e.date), startTime: normalizeTime(e.time), endTime: "",
-          location: e.location, notes: "",
-        });
-      }
-    }
-    if (includeAll || parserType === "Airport Transfer") {
-      for (const t of transfers.filter((tr) => tr.selected)) {
-        results.push({
-          id: uid(), type: "Airport Transfer", completed: false, createdAt: now,
-          title: [t.type, t.flight].filter(Boolean).join(" ") || "接送機",
-          date: normalizeDate(t.date), startTime: normalizeTime(t.time), endTime: "",
-          location: t.district, notes: t.notes,
-          flightNumber: t.flight, transferType: t.type,
-          district: t.district, vehicleType: t.vehicle, price: t.price,
-        });
-      }
-    }
-    if (includeAll || parserType === "Medical") {
-      for (const m of medicalItems.filter((mi) => mi.selected)) {
-        results.push({
-          id: uid(), type: "Medical", completed: false, createdAt: now,
-          title: [m.hospital, m.department].filter(Boolean).join(" ") || "醫療預約",
-          date: normalizeDate(m.date), startTime: normalizeTime(m.time), endTime: "",
-          location: m.hospital, notes: m.notes,
-          hospital: m.hospital, department: m.department,
-        });
-      }
-    }
-    if (includeAll || parserType === "Shopping") {
-      for (const s of shoppingItems.filter((si) => si.selected)) {
-        results.push({
-          id: uid(), type: "Shopping", completed: false, createdAt: now,
-          title: "購物清單", date: normalizeDate(s.date), startTime: "", endTime: "",
-          location: "", notes: "",
-          shoppingItems: s.lines, amount: s.amount,
-        });
-      }
-    }
-    if (includeAll || parserType === "Payment") {
-      for (const p of paymentItems.filter((pi) => pi.selected)) {
-        results.push({
-          id: uid(), type: "Payment", completed: false, createdAt: now,
-          title: p.name || "付款提醒",
-          date: normalizeDate(p.dueDate), startTime: "", endTime: "",
-          location: "", notes: p.notes,
-          dueDate: normalizeDate(p.dueDate), amount: p.amount,
-        });
-      }
-    }
-    if (includeAll || parserType === "Pending") {
-      for (const p of pendingItems.filter((pi) => pi.selected)) {
-        results.push({
-          id: uid(), type: "Pending", completed: false, createdAt: now,
-          title: p.text || "待確認事項",
-          date: "", startTime: "", endTime: "",
-          location: "", notes: "",
-        });
-      }
-    }
-    return results;
+    return previewItems.map((item) => ({
+      id: uid(),
+      type: item.type as Reminder["type"],
+      completed: false,
+      createdAt: now,
+      title: item.title || TYPE_LABEL[item.type] || "事項",
+      date: item.date,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      location: item.location,
+      notes: item.notes,
+      category: item.category,
+      flightNumber: item.flightNumber,
+      transferType: item.transferType,
+      district: item.district,
+      vehicleType: item.vehicleType,
+      price: item.price,
+      shoppingItems: item.shoppingItems,
+      amount: item.amount,
+      account: item.account,
+      dueDate: item.dueDate,
+      hospital: item.hospital,
+      department: item.department,
+      source: item.source,
+      merchant: item.merchant,
+    }));
   }
 
   function doCreate() {
@@ -1645,41 +1132,7 @@ export default function App() {
   }
 
   // ── Derived counts ──
-  const totalCount = (() => {
-    if (aiSource === "ai") {
-      return transfers.length + events.length + medicalItems.length +
-        shoppingItems.length + paymentItems.length + pendingItems.length;
-    }
-    switch (parserType) {
-      case "Airport Transfer": return transfers.length;
-      case "Course":           return events.length;
-      case "Medical":          return medicalItems.length;
-      case "Shopping":         return shoppingItems.length;
-      case "Payment":          return paymentItems.length;
-      case "Pending":          return pendingItems.length;
-      default: return 0;
-    }
-  })();
-
-  const selectedCount = (() => {
-    if (aiSource === "ai") {
-      return transfers.filter((t) => t.selected).length +
-        events.filter((e) => e.keepInLifePilot).length +
-        medicalItems.filter((m) => m.selected).length +
-        shoppingItems.filter((s) => s.selected).length +
-        paymentItems.filter((p) => p.selected).length +
-        pendingItems.filter((p) => p.selected).length;
-    }
-    switch (parserType) {
-      case "Airport Transfer": return transfers.filter((t) => t.selected).length;
-      case "Course":           return events.filter((e) => e.keepInLifePilot).length;
-      case "Medical":          return medicalItems.filter((m) => m.selected).length;
-      case "Shopping":         return shoppingItems.filter((s) => s.selected).length;
-      case "Payment":          return paymentItems.filter((p) => p.selected).length;
-      case "Pending":          return pendingItems.filter((p) => p.selected).length;
-      default: return 0;
-    }
-  })();
+  const totalCount = previewItems.length;
 
   const accentColor = detectionResult?.color ?? "blue";
 
@@ -1690,24 +1143,6 @@ export default function App() {
 也可以直接貼上 LINE 訊息、課程通知、
 接送工作、付款資訊或其他生活事項。`;
 
-  // ── Labels per type ──
-  const typeLabel: Record<MessageTypeName, string> = {
-    "Airport Transfer": "筆接送機行程",
-    "Course":           "個課程活動",
-    "Medical":          "筆醫療預約",
-    "Shopping":         "張購物清單",
-    "Payment":          "筆付款提醒",
-    "Pending":          "筆待確認事項",
-  };
-
-  const emptyHint: Record<MessageTypeName, string> = {
-    "Airport Transfer": "未找到接送機行程，請確認每筆資料以四位數時間開頭（如：2100）",
-    "Course":           "未找到任何課程活動，請確認訊息不為空白",
-    "Medical":          "未找到醫療資訊，請確認訊息包含醫院或科別",
-    "Shopping":         "未找到購物清單內容",
-    "Payment":          "未找到付款資訊",
-    "Pending":          "無內容",
-  };
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
@@ -1749,10 +1184,11 @@ export default function App() {
           <>
             {/* ── Compact detection summary ── */}
             {detectionResult && (() => {
-              const multiTypes = [transfers, events, medicalItems, shoppingItems, paymentItems, pendingItems].filter((a) => a.length > 0).length;
+              const typeSet = new Set(previewItems.map((i) => i.type));
+              const multiTypes = typeSet.size;
               return (
                 <div className="mb-5 flex items-center gap-2 flex-wrap">
-                  {aiSource === "ai" && multiTypes > 1 ? (
+                  {multiTypes > 1 ? (
                     <span className="text-sm text-gray-300">
                       已整理{" "}
                       <span className="text-blue-300 font-semibold">{multiTypes}</span>{" "}
@@ -1780,32 +1216,13 @@ export default function App() {
             {/* ── Preview section ── */}
             {totalCount > 0 ? (
               <>
-                {/* Heading + Select All / Clear All */}
+                {/* Heading */}
                 <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h2 className="text-lg font-semibold text-white">
-                      已整理{" "}
-                      <span className={accentText(accentColor)}>{totalCount}</span>{" "}
-                      個事項
-                    </h2>
-                    <p className="text-sm text-gray-500 mt-0.5">
-                      已選取 {selectedCount} / {totalCount}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleSelectAll}
-                      className={`px-3 py-1.5 rounded-lg text-sm border transition-all duration-150 ${accentText(accentColor)} border-white/10 hover:bg-white/5`}
-                    >
-                      全選
-                    </button>
-                    <button
-                      onClick={handleClearAll}
-                      className="px-3 py-1.5 rounded-lg text-sm text-gray-400 border border-white/10 hover:bg-white/5 transition-all duration-150"
-                    >
-                      清除
-                    </button>
-                  </div>
+                  <h2 className="text-lg font-semibold text-white">
+                    已整理{" "}
+                    <span className={accentText(accentColor)}>{totalCount}</span>{" "}
+                    個事項
+                  </h2>
                 </div>
 
                 {/* ── Bulk date apply ── */}
@@ -1871,35 +1288,34 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Cards — in AI mode render every populated type */}
+                {/* PreviewItemCard — unified card for all types */}
                 <div className="flex flex-col gap-3 mb-8">
-                  {(parserType === "Airport Transfer" || aiSource === "ai") && transfers.length > 0 && transfers.map((t) => (
-                    <AirportTransferCard key={t.id} transfer={t} onToggle={handleToggleTransfer} onDateChange={handleTransferDateChange} />
-                  ))}
-                  {(parserType === "Course" || aiSource === "ai") && events.length > 0 && events.map((e) => (
-                    <EventCard key={e.id} event={e} onToggle={handleToggleEvent} onDateChange={handleEventDateChange} />
-                  ))}
-                  {(parserType === "Medical" || aiSource === "ai") && medicalItems.length > 0 && medicalItems.map((m) => (
-                    <MedicalCard key={m.id} item={m} onToggle={handleToggleMedical} onDateChange={handleMedicalDateChange} />
-                  ))}
-                  {(parserType === "Shopping" || aiSource === "ai") && shoppingItems.length > 0 && shoppingItems.map((s) => (
-                    <ShoppingCard key={s.id} item={s} onToggle={handleToggleShopping} onDateChange={handleShoppingDateChange} />
-                  ))}
-                  {(parserType === "Payment" || aiSource === "ai") && paymentItems.length > 0 && paymentItems.map((p) => (
-                    <PaymentCard key={p.id} item={p} onToggle={handleTogglePayment} onDueDateChange={handlePaymentDueDateChange} />
-                  ))}
-                  {(parserType === "Pending" || aiSource === "ai") && pendingItems.length > 0 && pendingItems.map((p) => (
-                    <PendingCard key={p.id} item={p} onToggle={handleTogglePending} />
+                  {previewItems.map((item) => (
+                    <PreviewItemCard
+                      key={item.id}
+                      item={item}
+                      isEditing={editingId === item.id}
+                      onEdit={() => setEditingId(item.id)}
+                      onClose={() => setEditingId(null)}
+                      onChange={(patch: Partial<PreviewItem>) =>
+                        setPreviewItems((prev) =>
+                          prev.map((p) => (p.id === item.id ? { ...p, ...patch } : p))
+                        )
+                      }
+                      onDelete={() =>
+                        setPreviewItems((prev) => prev.filter((p) => p.id !== item.id))
+                      }
+                    />
                   ))}
                 </div>
 
-                {/* Create Selected button */}
+                {/* Create All button */}
                 <button
                   onClick={handleCreate}
-                  disabled={selectedCount === 0}
+                  disabled={totalCount === 0}
                   className="w-full py-3.5 rounded-xl font-semibold text-base transition-all duration-150 shadow-lg disabled:opacity-40 disabled:cursor-not-allowed bg-white text-gray-950 hover:bg-gray-100 active:bg-gray-200"
                 >
-                  建立所選（{selectedCount}）
+                  建立全部（{totalCount}）
                 </button>
                 {createConfirmPending && (
                   <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
@@ -1923,81 +1339,10 @@ export default function App() {
                   </div>
                 )}
 
-                {/* ── Apple Reminders preview (Course only) ── */}
-                {reminderItems.length > 0 && (
-                  <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5">
-                    <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold mb-4">
-                      已準備 {reminderItems.length} 筆提醒資料
-                    </p>
-                    <div className="flex flex-col gap-3">
-                      {reminderItems.map((item) => (
-                        <div
-                          key={item.sourceEventId}
-                          className="rounded-xl border border-white/10 bg-white/5 p-4 flex flex-col gap-1"
-                        >
-                          <p className="font-semibold text-white text-sm">{item.title}</p>
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-1 text-xs text-gray-400">
-                            <span className="text-gray-600">到期</span>
-                            <span>{formatReminderDate(item.dueDate)}</span>
-                            <span className="text-gray-600">提醒</span>
-                            <span>{formatReminderDate(item.reminderDate)}</span>
-                          </div>
-                          {item.notes && (
-                            <p className="mt-1 text-xs text-gray-500 whitespace-pre-line leading-relaxed">
-                              {item.notes}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-xs text-gray-600 mt-4 italic">
-                      資料已準備完成，尚未同步至 Apple 提醒事項。
-                    </p>
-                  </div>
-                )}
-
-                {/* ── Apple Calendar preview (Course only) ── */}
-                {calendarItems.length > 0 && (
-                  <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
-                    <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold mb-4">
-                      已準備 {calendarItems.length} 筆行事曆資料
-                    </p>
-                    <div className="flex flex-col gap-3">
-                      {calendarItems.map((item) => (
-                        <div
-                          key={item.sourceEventId}
-                          className="rounded-xl border border-white/10 bg-white/5 p-4 flex flex-col gap-1"
-                        >
-                          <p className="font-semibold text-white text-sm">{item.title}</p>
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-1 text-xs text-gray-400">
-                            <span className="text-gray-600">開始</span>
-                            <span>{formatReminderDate(item.startDate)}</span>
-                            <span className="text-gray-600">結束</span>
-                            <span>{formatReminderDate(item.endDate)}</span>
-                            {item.location && (
-                              <>
-                                <span className="text-gray-600">地點</span>
-                                <span>{item.location}</span>
-                              </>
-                            )}
-                          </div>
-                          {item.notes && (
-                            <p className="mt-1 text-xs text-gray-500 whitespace-pre-line leading-relaxed">
-                              {item.notes}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-xs text-gray-600 mt-4 italic">
-                      資料已準備完成，尚未同步至 Apple 行事曆。
-                    </p>
-                  </div>
-                )}
               </>
             ) : (
               <p className="text-sm text-gray-500 mt-2">
-                {aiSource === "ai" ? "AI 未找到任何可解析的事項。" : emptyHint[parserType]}
+                未找到可解析的事項，請確認訊息內容後再試。
               </p>
             )}
           </>

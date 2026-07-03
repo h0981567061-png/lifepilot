@@ -1,0 +1,604 @@
+import { useState } from "react";
+import type { PreviewItem, AllType } from "../previewTypes";
+import {
+  ALL_TYPES,
+  TYPE_LABEL,
+  getCategoriesForType,
+  typeBorderClass,
+  typeBadgeClass,
+} from "../previewTypes";
+import { normalizeDate, normalizeTime } from "../utils";
+
+// ─── Props ─────────────────────────────────────────────────────────────────────
+
+interface Props {
+  item: PreviewItem;
+  isEditing: boolean;
+  onEdit: () => void;
+  onClose: () => void;
+  onChange: (patch: Partial<PreviewItem>) => void;
+  onDelete: () => void;
+}
+
+// ─── Small helpers ─────────────────────────────────────────────────────────────
+
+function TypeBadge({ type }: { type: AllType }) {
+  return (
+    <span
+      className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${typeBadgeClass(type)}`}
+    >
+      {TYPE_LABEL[type]}
+    </span>
+  );
+}
+
+function FormRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="text-xs text-gray-500 w-16 pt-2 shrink-0 text-right">
+        {label}
+      </span>
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function TextInput({
+  value,
+  onChange,
+  placeholder,
+  multiline,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+}) {
+  const cls =
+    "w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50 resize-none";
+  if (multiline) {
+    return (
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={2}
+        className={cls}
+      />
+    );
+  }
+  return (
+    <input
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className={cls}
+    />
+  );
+}
+
+// ─── Compact display area (non-editing mode) ───────────────────────────────────
+
+function ItemDisplay({ item }: { item: PreviewItem }) {
+  const meta: string[] = [];
+
+  switch (item.type) {
+    case "Airport Transfer":
+      if (item.transferType) meta.push(item.transferType);
+      if (item.flightNumber) meta.push(item.flightNumber);
+      if (item.startTime) meta.push(normalizeTime(item.startTime));
+      if (item.district) meta.push(item.district);
+      if (item.vehicleType) meta.push(item.vehicleType);
+      if (item.price) meta.push(`${item.price} 元`);
+      break;
+    case "Payment":
+      if (item.date) meta.push(`截止 ${item.date.replace(/-/g, "/")}`);
+      if (item.amount) meta.push(`${item.amount} 元`);
+      break;
+    case "Income":
+      if (item.amount) meta.push(`${item.amount} 元`);
+      if (item.source) meta.push(item.source);
+      if (item.startTime) meta.push(item.startTime);
+      break;
+    case "Expense":
+      if (item.amount) meta.push(`${item.amount} 元`);
+      if (item.merchant) meta.push(item.merchant);
+      if (item.startTime) meta.push(item.startTime);
+      break;
+    case "Medical":
+      if (item.hospital) meta.push(item.hospital);
+      if (item.department) meta.push(item.department);
+      if (item.startTime) meta.push(item.startTime);
+      break;
+    default:
+      if (item.startTime) meta.push(item.startTime);
+      if (item.location) meta.push(item.location);
+  }
+
+  const showDateWarning =
+    item.type !== "Payment" && !item.date;
+
+  return (
+    <>
+      <p className="font-semibold text-white leading-snug text-sm">
+        {item.title || TYPE_LABEL[item.type]}
+      </p>
+
+      {item.type === "Shopping" && item.shoppingItems.length > 0 && (
+        <ul className="mt-1 space-y-0.5">
+          {item.shoppingItems.slice(0, 3).map((it, i) => (
+            <li key={i} className="text-xs text-gray-400 flex gap-1">
+              <span className="text-purple-400/60">·</span>
+              <span>{it}</span>
+            </li>
+          ))}
+          {item.shoppingItems.length > 3 && (
+            <li className="text-xs text-gray-500">
+              +{item.shoppingItems.length - 3} 項
+            </li>
+          )}
+        </ul>
+      )}
+
+      {item.type === "Pending" && item.pendingText && (
+        <p className="mt-1 text-xs text-gray-500 line-clamp-2">
+          {item.pendingText}
+        </p>
+      )}
+
+      <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-1 items-center">
+        {showDateWarning ? (
+          <span className="text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+            ⚠ 尚未設定日期
+          </span>
+        ) : item.type !== "Payment" && item.date ? (
+          <span className="text-xs text-gray-500">
+            {item.date.replace(/-/g, "/")}
+          </span>
+        ) : null}
+
+        {meta.map((m, i) => (
+          <span key={i} className="text-xs text-gray-500">
+            {m}
+          </span>
+        ))}
+
+        {item.category && (
+          <span className="text-[11px] bg-white/5 border border-white/10 text-gray-500 px-1.5 py-0.5 rounded-full">
+            {item.category}
+          </span>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ─── Type-specific editor fields ───────────────────────────────────────────────
+
+interface EditorProps {
+  draft: PreviewItem;
+  setDraft: React.Dispatch<React.SetStateAction<PreviewItem>>;
+}
+
+function TypeSpecificEditor({ draft, setDraft }: EditorProps) {
+  const [newItem, setNewItem] = useState("");
+
+  const upd = (patch: Partial<PreviewItem>) =>
+    setDraft((d) => ({ ...d, ...patch }));
+
+  const addShoppingItem = () => {
+    const v = newItem.trim();
+    if (!v) return;
+    upd({ shoppingItems: [...draft.shoppingItems, v] });
+    setNewItem("");
+  };
+
+  const removeShoppingItem = (i: number) =>
+    upd({ shoppingItems: draft.shoppingItems.filter((_, idx) => idx !== i) });
+
+  switch (draft.type) {
+    case "Airport Transfer":
+      return (
+        <>
+          <FormRow label="方向">
+            <select
+              value={draft.transferType}
+              onChange={(e) => upd({ transferType: e.target.value })}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
+              style={{ colorScheme: "dark" }}
+            >
+              <option value="">未指定</option>
+              <option value="接機">接機</option>
+              <option value="送機">送機</option>
+            </select>
+          </FormRow>
+          <FormRow label="航班">
+            <TextInput
+              value={draft.flightNumber}
+              onChange={(v) => upd({ flightNumber: v })}
+              placeholder="如 CI173"
+            />
+          </FormRow>
+          <FormRow label="地區">
+            <TextInput
+              value={draft.district}
+              onChange={(v) => upd({ district: v })}
+              placeholder="目的地或地區"
+            />
+          </FormRow>
+          <FormRow label="車型">
+            <TextInput
+              value={draft.vehicleType}
+              onChange={(v) => upd({ vehicleType: v })}
+              placeholder="如 正七、廂型"
+            />
+          </FormRow>
+          <FormRow label="費用">
+            <TextInput
+              value={draft.price}
+              onChange={(v) => upd({ price: v })}
+              placeholder="金額（元）"
+            />
+          </FormRow>
+        </>
+      );
+
+    case "Shopping":
+      return (
+        <FormRow label="品項">
+          <div className="space-y-1.5">
+            {draft.shoppingItems.map((it, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="flex-1 text-sm text-gray-300 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10">
+                  {it}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeShoppingItem(i)}
+                  className="text-gray-500 hover:text-red-400 transition-colors text-xs px-2 py-1"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={newItem}
+                onChange={(e) => setNewItem(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addShoppingItem();
+                  }
+                }}
+                placeholder="新增品項（按 Enter）"
+                className="flex-1 bg-white/5 border border-white/15 rounded-lg px-3 py-1.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
+              />
+              <button
+                type="button"
+                onClick={addShoppingItem}
+                className="text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-400 hover:text-white transition-colors"
+              >
+                新增
+              </button>
+            </div>
+          </div>
+        </FormRow>
+      );
+
+    case "Payment":
+      return (
+        <>
+          <FormRow label="截止日期">
+            <input
+              type="date"
+              value={draft.date}
+              onChange={(e) => upd({ date: e.target.value, dueDate: e.target.value })}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
+              style={{ colorScheme: "dark" }}
+            />
+          </FormRow>
+          <FormRow label="金額">
+            <TextInput
+              value={draft.amount}
+              onChange={(v) => upd({ amount: v })}
+              placeholder="金額（元）"
+            />
+          </FormRow>
+          <FormRow label="帳戶">
+            <TextInput
+              value={draft.account}
+              onChange={(v) => upd({ account: v })}
+              placeholder="帳戶或繳費方式（選填）"
+            />
+          </FormRow>
+        </>
+      );
+
+    case "Medical":
+      return (
+        <>
+          <FormRow label="醫院">
+            <TextInput
+              value={draft.hospital}
+              onChange={(v) => upd({ hospital: v })}
+              placeholder="醫院名稱"
+            />
+          </FormRow>
+          <FormRow label="科別">
+            <TextInput
+              value={draft.department}
+              onChange={(v) => upd({ department: v })}
+              placeholder="科別"
+            />
+          </FormRow>
+        </>
+      );
+
+    case "Income":
+      return (
+        <>
+          <FormRow label="金額">
+            <TextInput
+              value={draft.amount}
+              onChange={(v) => upd({ amount: v })}
+              placeholder="收入金額（元）"
+            />
+          </FormRow>
+          <FormRow label="來源">
+            <TextInput
+              value={draft.source}
+              onChange={(v) => upd({ source: v })}
+              placeholder="收入來源（選填）"
+            />
+          </FormRow>
+        </>
+      );
+
+    case "Expense":
+      return (
+        <>
+          <FormRow label="金額">
+            <TextInput
+              value={draft.amount}
+              onChange={(v) => upd({ amount: v })}
+              placeholder="支出金額（元）"
+            />
+          </FormRow>
+          <FormRow label="商家">
+            <TextInput
+              value={draft.merchant}
+              onChange={(v) => upd({ merchant: v })}
+              placeholder="商家或地點（選填）"
+            />
+          </FormRow>
+        </>
+      );
+
+    case "Pending":
+      return (
+        <FormRow label="內容">
+          <TextInput
+            value={draft.pendingText}
+            onChange={(v) => upd({ pendingText: v, title: v || draft.title })}
+            placeholder="原始文字"
+            multiline
+          />
+        </FormRow>
+      );
+
+    default:
+      return null;
+  }
+}
+
+// ─── Main component ─────────────────────────────────────────────────────────────
+
+export function PreviewItemCard({
+  item,
+  isEditing,
+  onEdit,
+  onClose,
+  onChange,
+  onDelete,
+}: Props) {
+  const [draft, setDraft] = useState<PreviewItem>(item);
+
+  const upd = (patch: Partial<PreviewItem>) =>
+    setDraft((d) => ({ ...d, ...patch }));
+
+  const handleEditClick = () => {
+    setDraft(item);
+    onEdit();
+  };
+
+  const showTimeFields = !["Payment", "Shopping"].includes(item.type);
+  const showEndTime = ["Course", "Work", "Family", "General"].includes(
+    draft.type
+  );
+  const showLocation = ![
+    "Income",
+    "Expense",
+    "Payment",
+    "Medical",
+    "Airport Transfer",
+  ].includes(draft.type);
+
+  // ── Display mode ────────────────────────────────────────────────────────────
+  if (!isEditing) {
+    return (
+      <div
+        className={`rounded-xl border p-4 transition-all duration-150 ${typeBorderClass(item.type)}`}
+      >
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <TypeBadge type={item.type} />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={handleEditClick}
+              className="text-xs px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-gray-400 hover:text-white transition-colors"
+            >
+              編輯
+            </button>
+            <button
+              onClick={onDelete}
+              className="text-xs px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-gray-500 hover:text-red-400 transition-colors"
+            >
+              移除
+            </button>
+          </div>
+        </div>
+        <ItemDisplay item={item} />
+      </div>
+    );
+  }
+
+  // ── Edit mode ───────────────────────────────────────────────────────────────
+  return (
+    <div className="rounded-xl border border-blue-500/40 bg-blue-500/5 p-4 transition-all duration-150">
+      <p className="text-xs font-semibold text-blue-400 mb-3">編輯事項</p>
+
+      <div className="space-y-3">
+        {/* Type selector */}
+        <FormRow label="類型">
+          <select
+            value={draft.type}
+            onChange={(e) =>
+              setDraft((d) => ({
+                ...d,
+                type: e.target.value as AllType,
+                category: "",
+              }))
+            }
+            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
+            style={{ colorScheme: "dark" }}
+          >
+            {ALL_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {TYPE_LABEL[t]}
+              </option>
+            ))}
+          </select>
+        </FormRow>
+
+        {/* Category selector */}
+        <FormRow label="分類">
+          <select
+            value={draft.category}
+            onChange={(e) => upd({ category: e.target.value })}
+            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
+            style={{ colorScheme: "dark" }}
+          >
+            <option value="">未分類</option>
+            {getCategoriesForType(draft.type).map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </FormRow>
+
+        {/* Title (hidden for Airport Transfer since it derives title from transferType+flight) */}
+        {draft.type !== "Airport Transfer" && (
+          <FormRow label="標題">
+            <TextInput
+              value={draft.title}
+              onChange={(v) => upd({ title: v })}
+              placeholder="事項標題"
+            />
+          </FormRow>
+        )}
+
+        {/* Date (Payment has its own date row inside TypeSpecificEditor) */}
+        {draft.type !== "Payment" && (
+          <FormRow label="日期">
+            <input
+              type="date"
+              value={normalizeDate(draft.date)}
+              onChange={(e) => upd({ date: e.target.value })}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
+              style={{ colorScheme: "dark" }}
+            />
+          </FormRow>
+        )}
+
+        {/* Time (not for Payment, Shopping) */}
+        {showTimeFields && (
+          <FormRow label="時間">
+            <div className="flex gap-2">
+              <input
+                type="time"
+                value={draft.startTime}
+                onChange={(e) => upd({ startTime: e.target.value })}
+                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
+                style={{ colorScheme: "dark" }}
+              />
+              {showEndTime && (
+                <input
+                  type="time"
+                  value={draft.endTime}
+                  onChange={(e) => upd({ endTime: e.target.value })}
+                  className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
+                  style={{ colorScheme: "dark" }}
+                />
+              )}
+            </div>
+          </FormRow>
+        )}
+
+        {/* Location */}
+        {showLocation && (
+          <FormRow label="地點">
+            <TextInput
+              value={draft.location}
+              onChange={(v) => upd({ location: v })}
+              placeholder="地點（選填）"
+            />
+          </FormRow>
+        )}
+
+        {/* Type-specific fields — keyed by type so local state resets on type switch */}
+        <TypeSpecificEditor
+          key={draft.type}
+          draft={draft}
+          setDraft={setDraft}
+        />
+
+        {/* Notes */}
+        <FormRow label="備註">
+          <TextInput
+            value={draft.notes}
+            onChange={(v) => upd({ notes: v })}
+            placeholder="備註（選填）"
+            multiline
+          />
+        </FormRow>
+
+        {/* Action buttons */}
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => { onChange(draft); onClose(); }}
+            className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors"
+          >
+            完成
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-400 text-sm transition-colors hover:text-white"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -13,6 +13,11 @@ export type ReminderType =
   | "Medical"
   | "Shopping"
   | "Payment"
+  | "Income"
+  | "Expense"
+  | "Work"
+  | "Family"
+  | "General"
   | "Pending";
 
 export interface Reminder {
@@ -26,6 +31,8 @@ export interface Reminder {
   notes: string;
   completed: boolean;
   createdAt: string;
+  // Category (separate from type — for filtering/statistics)
+  category?: string;
   // Airport Transfer
   flightNumber?: string;
   transferType?: string;
@@ -34,12 +41,17 @@ export interface Reminder {
   price?: string;
   // Shopping
   shoppingItems?: string[];
-  // Payment
+  // Payment / Expense / Income
   dueDate?: string;
   amount?: string;
+  account?: string;
   // Medical
   hospital?: string;
   department?: string;
+  // Income
+  source?: string;
+  // Expense
+  merchant?: string;
   // Reminder settings (optional — existing items use defaults in EditPage)
   reminderEnabled?: boolean;
   calendarEnabled?: boolean;
