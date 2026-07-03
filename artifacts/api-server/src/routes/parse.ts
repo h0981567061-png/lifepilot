@@ -102,9 +102,9 @@ function validateAIResult(data: unknown): data is AIParseResult {
 const router: IRouter = Router();
 
 router.post("/parse", async (req: Request, res: Response) => {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    res.status(503).json({ error: "OPENAI_API_KEY is not configured on the server" });
+    res.status(503).json({ error: "GROQ_API_KEY is not configured on the server" });
     return;
   }
 
@@ -128,14 +128,14 @@ router.post("/parse", async (req: Request, res: Response) => {
   const timeout = setTimeout(() => controller.abort(), 30_000);
 
   try {
-    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+    const openaiRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "llama-3.3-70b-versatile",
         response_format: { type: "json_object" },
         max_tokens: 2048,
         messages: [
