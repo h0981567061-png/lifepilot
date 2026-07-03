@@ -4,9 +4,15 @@ import { normalizeDate } from "../utils";
 import { TYPE_LABEL, type AllType } from "../previewTypes";
 import { ReminderEditor } from "../components/ReminderEditor";
 import { TimePicker } from "../components/TimePicker";
-import { QuickFinanceModal } from "../components/QuickFinanceModal";
 import { CategorySelect } from "../components/CategorySelect";
-import { loadFinanceEntries, type FinanceEntry, fmtCurrency } from "../financeStore";
+import {
+  loadFinanceEntries,
+  saveFinanceEntries,
+  type FinanceEntry,
+  fmtCurrency,
+  FINANCE_INCOME_CATEGORIES,
+  FINANCE_EXPENSE_CATEGORIES,
+} from "../financeStore";
 
 // ── UI primitives ─────────────────────────────────────────────────────────────
 
@@ -18,13 +24,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function FieldRow({ label, children, alignTop = false }: {
-  label: string;
-  children: React.ReactNode;
-  alignTop?: boolean;
-}) {
+function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className={`flex gap-4 py-3 border-b border-white/5 ${alignTop ? "items-start" : "items-start"}`}>
+    <div className="flex gap-4 py-3 border-b border-white/5 items-start">
       <span className="w-20 text-xs text-gray-500 pt-1.5 shrink-0">{label}</span>
       <div className="flex-1 min-w-0">{children}</div>
     </div>
@@ -32,9 +34,7 @@ function FieldRow({ label, children, alignTop = false }: {
 }
 
 function TextInput({ value, onChange, placeholder }: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
+  value: string; onChange: (v: string) => void; placeholder?: string;
 }) {
   return (
     <input
@@ -48,9 +48,7 @@ function TextInput({ value, onChange, placeholder }: {
 }
 
 function TextArea({ value, onChange, placeholder }: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
+  value: string; onChange: (v: string) => void; placeholder?: string;
 }) {
   return (
     <textarea
@@ -63,16 +61,8 @@ function TextArea({ value, onChange, placeholder }: {
   );
 }
 
-function Toggle({
-  label,
-  description,
-  checked,
-  onChange,
-}: {
-  label: string;
-  description?: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
+function Toggle({ label, description, checked, onChange }: {
+  label: string; description?: string; checked: boolean; onChange: (v: boolean) => void;
 }) {
   return (
     <div
@@ -90,17 +80,15 @@ function Toggle({
           checked ? "bg-blue-500" : "bg-white/15"
         }`}
       >
-        <span
-          className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-            checked ? "translate-x-5" : "translate-x-0"
-          }`}
-        />
+        <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+          checked ? "translate-x-5" : "translate-x-0"
+        }`} />
       </button>
     </div>
   );
 }
 
-// ─── Type badge styles ────────────────────────────────────────────────────────
+// ─── Type badge ───────────────────────────────────────────────────────────────
 
 const TYPE_BADGE: Record<string, string> = {
   Course:             "bg-blue-500/15 text-blue-300 border-blue-500/25",
@@ -116,68 +104,41 @@ const TYPE_BADGE: Record<string, string> = {
   Pending:            "bg-white/10 text-gray-400 border-white/15",
 };
 
-// ─── Reusable sub-components ──────────────────────────────────────────────────
-
-function DateField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return (
-    <input
-      type="date"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full bg-transparent text-sm text-white focus:outline-none"
-      style={{ colorScheme: "dark" }}
-    />
-  );
-}
-
 // ─── Time mode ────────────────────────────────────────────────────────────────
 
 type TimeMode = "allday" | "single" | "range";
 
-function deriveTimeMode(r: Reminder, defaultMode: TimeMode): TimeMode {
+function deriveTimeMode(r: Reminder): TimeMode {
   if (r.allDay) return "allday";
   if (r.endTime && r.endTime !== r.startTime && r.endTime !== "") return "range";
   if (r.startTime) return "single";
-  return defaultMode;
-}
-
-function defaultTimeMode(type: string): TimeMode {
-  switch (type) {
+  switch (r.type) {
     case "Course":           return "range";
-    case "Medical":          return "single";
+    case "Medical":
     case "Airport Transfer": return "single";
     default:                 return "allday";
   }
 }
 
-// ─── TimeField ────────────────────────────────────────────────────────────────
-
 function TimeField({
-  mode, onModeChange,
-  startTime, onStartTime,
-  endTime,   onEndTime,
+  mode, onModeChange, startTime, onStartTime, endTime, onEndTime,
 }: {
-  mode: TimeMode;
-  onModeChange: (m: TimeMode) => void;
-  startTime: string;
-  onStartTime: (v: string) => void;
-  endTime: string;
-  onEndTime: (v: string) => void;
+  mode: TimeMode; onModeChange: (m: TimeMode) => void;
+  startTime: string; onStartTime: (v: string) => void;
+  endTime: string;   onEndTime:   (v: string) => void;
 }) {
-  const modes: { key: TimeMode; label: string }[] = [
-    { key: "allday", label: "全天" },
-    { key: "single", label: "單一時間" },
-    { key: "range",  label: "時間區間" },
-  ];
-
   return (
     <div className="space-y-2.5">
       <div className="flex gap-1.5 flex-wrap">
-        {modes.map(({ key, label }) => (
+        {([ ["allday","全天"], ["single","單一時間"], ["range","時間區間"] ] as const).map(([key, label]) => (
           <button
             key={key}
             type="button"
-            onClick={() => onModeChange(key)}
+            onClick={() => {
+              onModeChange(key);
+              if (key === "allday") { onStartTime(""); onEndTime(""); }
+              if (key === "single") { onEndTime(""); }
+            }}
             className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
               mode === key
                 ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
@@ -188,9 +149,7 @@ function TimeField({
           </button>
         ))}
       </div>
-      {mode === "single" && (
-        <TimePicker value={startTime} onChange={onStartTime} />
-      )}
+      {mode === "single" && <TimePicker value={startTime} onChange={onStartTime} />}
       {mode === "range" && (
         <div className="flex items-center gap-2 flex-wrap">
           <TimePicker value={startTime} onChange={onStartTime} />
@@ -202,15 +161,46 @@ function TimeField({
   );
 }
 
-// ─── FinancialStatusPills ──────────────────────────────────────────────────────
+// ─── Finance mode types ───────────────────────────────────────────────────────
+// "none" | "receivable" | "payable" = Reminder financial status (saved)
+// "income" | "expense" = transient UI mode for creating Finance Records
 
-type FinancialStatus = "none" | "receivable" | "payable";
+type FinanceMode = "none" | "receivable" | "payable" | "income" | "expense";
+type SavedFinancialStatus = "none" | "receivable" | "payable";
 
-const FINANCIAL_STATUS_OPTIONS: { key: FinancialStatus; label: string; activeClass: string }[] = [
-  { key: "none",       label: "無",   activeClass: "bg-white/10 text-gray-300 border-white/25" },
+const FINANCE_MODE_OPTIONS: {
+  key: FinanceMode;
+  label: string;
+  activeClass: string;
+}[] = [
+  { key: "none",       label: "無",   activeClass: "bg-white/12 text-gray-300 border-white/25" },
   { key: "receivable", label: "待收", activeClass: "bg-teal-500/20 text-teal-300 border-teal-500/40" },
   { key: "payable",    label: "待付", activeClass: "bg-rose-500/20 text-rose-300 border-rose-500/40" },
+  { key: "income",     label: "收入", activeClass: "bg-teal-700/25 text-teal-200 border-teal-500/30" },
+  { key: "expense",    label: "支出", activeClass: "bg-orange-500/20 text-orange-300 border-orange-500/40" },
 ];
+
+// helper: default Finance Record category from reminder type
+function defaultCategory(rType: string, finType: "income" | "expense"): string {
+  if (finType === "income") {
+    if (rType === "Airport Transfer") return "接送收入";
+    return "";
+  }
+  switch (rType) {
+    case "Medical":  return "醫療";
+    case "Shopping": return "購物";
+    case "Payment":  return "帳單";
+    case "Course":   return "工作";
+    default:         return "";
+  }
+}
+
+// helper: default Finance Record amount from reminder
+function defaultFinanceAmount(reminder: Reminder, finType: "income" | "expense"): string {
+  if (reminder.type === "Airport Transfer" && finType === "income") return reminder.price ?? "";
+  if (reminder.type === "Payment") return reminder.amount ?? "";
+  return "";
+}
 
 // ─── EditPage ─────────────────────────────────────────────────────────────────
 
@@ -226,84 +216,7 @@ export function EditPage({
   onDelete: () => void;
 }) {
   const t = reminder.type;
-
-  // ── Common state ──────────────────────────────────────────────────────────
-  const [title,    setTitle]    = useState(reminder.title);
-  const [date,     setDate]     = useState(normalizeDate(reminder.date));
-  const [timeMode, setTimeMode] = useState<TimeMode>(() =>
-    deriveTimeMode(reminder, defaultTimeMode(t))
-  );
-  const [startTime, setStartTime] = useState(reminder.startTime ?? "");
-  const [endTime,   setEndTime]   = useState(reminder.endTime ?? "");
-  const [location,  setLocation]  = useState(reminder.location ?? "");
-  const [notes,     setNotes]     = useState(reminder.notes ?? "");
-  const [category,  setCategory]  = useState(reminder.category ?? "");
-
-  // ── Financial status (with backward compat) ───────────────────────────────
-  const [financialStatus, setFinancialStatus] = useState<FinancialStatus>(() => {
-    if (reminder.financialStatus && reminder.financialStatus !== "none") return reminder.financialStatus;
-    // Payment backward compat: old records without financialStatus but with amount
-    if (!reminder.financialStatus && t === "Payment" && reminder.amount) return "payable";
-    return "none";
-  });
-
-  const [expectedAmount, setExpectedAmount] = useState<number | undefined>(() => {
-    if (reminder.expectedAmount !== undefined) return reminder.expectedAmount;
-    // Payment backward compat
-    if (!reminder.financialStatus && t === "Payment" && reminder.amount) {
-      const n = parseFloat(String(reminder.amount).replace(/,/g, ""));
-      return isNaN(n) ? undefined : n;
-    }
-    return undefined;
-  });
-
-  const [financialDueDate, setFinancialDueDate] = useState<string>(() => {
-    if (reminder.financialDueDate) return reminder.financialDueDate;
-    // Payment backward compat
-    if (!reminder.financialStatus && t === "Payment" && reminder.dueDate) {
-      return normalizeDate(reminder.dueDate);
-    }
-    return "";
-  });
-
-  // ── Finance records (linked) ───────────────────────────────────────────────
-  const [linkedFinance,    setLinkedFinance]    = useState<FinanceEntry[]>(() =>
-    loadFinanceEntries().filter((e) => e.sourceReminderId === reminder.id)
-  );
-  const [showDeleteWarning, setShowDeleteWarning] = useState(false);
-  const [showQuickFinance,  setShowQuickFinance]  = useState(false);
-
-  // ── Airport Transfer ──────────────────────────────────────────────────────
-  const [flightNumber, setFlightNumber] = useState(reminder.flightNumber ?? "");
-  const [transferType, setTransferType] = useState(reminder.transferType ?? "");
-  const [district,     setDistrict]     = useState(reminder.district ?? "");
-  const [vehicleType,  setVehicleType]  = useState(reminder.vehicleType ?? "");
-  const [price,        setPrice]        = useState(reminder.price ?? "");
-
-  // ── Shopping ──────────────────────────────────────────────────────────────
-  const [shoppingItems, setShoppingItems] = useState<string[]>(reminder.shoppingItems ?? []);
-  const [newItem,       setNewItem]       = useState("");
-
-  // ── Payment ───────────────────────────────────────────────────────────────
-  const [dueDate,  setDueDate]  = useState(normalizeDate(reminder.dueDate ?? reminder.date ?? ""));
-  const [amount,   setAmount]   = useState(reminder.amount ?? "");
-  const [account,  setAccount]  = useState(reminder.account ?? "");
-
-  // ── Medical ───────────────────────────────────────────────────────────────
-  const [hospital,   setHospital]   = useState(reminder.hospital ?? "");
-  const [department, setDepartment] = useState(reminder.department ?? "");
-
-  // ── Income / Expense ──────────────────────────────────────────────────────
-  const [source,       setSource]       = useState(reminder.source ?? "");
-  const [merchant,     setMerchant]     = useState(reminder.merchant ?? "");
-  const [incomeAmount, setIncomeAmount] = useState(reminder.amount ?? "");
-
-  // ── Reminder notifications ────────────────────────────────────────────────
-  const [reminders,       setReminders]       = useState<ReminderNotification[]>(reminder.reminders ?? []);
-  const [reminderEnabled, setReminderEnabled] = useState(reminder.reminderEnabled ?? true);
-  const [calendarEnabled, setCalendarEnabled] = useState(reminder.calendarEnabled ?? false);
-
-  // ── Flags ─────────────────────────────────────────────────────────────────
+  const isPending  = t === "Pending";
   const isPayment  = t === "Payment";
   const isCourse   = t === "Course";
   const isAirport  = t === "Airport Transfer";
@@ -311,30 +224,141 @@ export function EditPage({
   const isShopping = t === "Shopping";
   const isIncome   = t === "Income";
   const isExpense  = t === "Expense";
-  const isPending  = t === "Pending";
 
-  // ReminderEditor helpers
-  const re_hasDate = isPayment ? !!dueDate : !!date;
-  const re_hasTime = timeMode !== "allday" && !!startTime;
+  // ── Common ──────────────────────────────────────────────────────────────────
+  const [title,     setTitle]     = useState(reminder.title);
+  const [date,      setDate]      = useState(normalizeDate(reminder.date));
+  const [timeMode,  setTimeMode]  = useState<TimeMode>(deriveTimeMode(reminder));
+  const [startTime, setStartTime] = useState(reminder.startTime ?? "");
+  const [endTime,   setEndTime]   = useState(reminder.endTime ?? "");
+  const [location,  setLocation]  = useState(reminder.location ?? "");
+  const [notes,     setNotes]     = useState(reminder.notes ?? "");
+  const [category,  setCategory]  = useState(reminder.category ?? "");
 
-  // Finance summary for display (linked Finance Records only)
+  // ── Type-specific ──────────────────────────────────────────────────────────
+  const [flightNumber, setFlightNumber] = useState(reminder.flightNumber ?? "");
+  const [transferType, setTransferType] = useState(reminder.transferType ?? "");
+  const [district,     setDistrict]     = useState(reminder.district ?? "");
+  const [vehicleType,  setVehicleType]  = useState(reminder.vehicleType ?? "");
+  const [price,        setPrice]        = useState(reminder.price ?? "");
+  const [shoppingItems, setShoppingItems] = useState<string[]>(reminder.shoppingItems ?? []);
+  const [newItem,       setNewItem]       = useState("");
+  const [dueDate,    setDueDate]    = useState(normalizeDate(reminder.dueDate ?? reminder.date ?? ""));
+  const [amount,     setAmount]     = useState(reminder.amount ?? "");
+  const [account,    setAccount]    = useState(reminder.account ?? "");
+  const [hospital,   setHospital]   = useState(reminder.hospital ?? "");
+  const [department, setDepartment] = useState(reminder.department ?? "");
+  const [source,     setSource]     = useState(reminder.source ?? "");
+  const [merchant,   setMerchant]   = useState(reminder.merchant ?? "");
+  const [incomeAmount, setIncomeAmount] = useState(reminder.amount ?? "");
+
+  // ── Reminder notifications ─────────────────────────────────────────────────
+  const [reminders,       setReminders]       = useState<ReminderNotification[]>(reminder.reminders ?? []);
+  const [reminderEnabled, setReminderEnabled] = useState(reminder.reminderEnabled ?? true);
+  const [calendarEnabled, setCalendarEnabled] = useState(reminder.calendarEnabled ?? false);
+
+  // ── Saved financial status (written to Reminder on save) ──────────────────
+  const [financialStatus, setFinancialStatus] = useState<SavedFinancialStatus>(() => {
+    if (reminder.financialStatus === "receivable" || reminder.financialStatus === "payable") return reminder.financialStatus;
+    if (!reminder.financialStatus && t === "Payment" && reminder.amount) return "payable";
+    return "none";
+  });
+  const [expectedAmount, setExpectedAmount] = useState<number | undefined>(() => {
+    if (reminder.expectedAmount !== undefined) return reminder.expectedAmount;
+    if (!reminder.financialStatus && t === "Payment" && reminder.amount) {
+      const n = parseFloat(String(reminder.amount).replace(/,/g, ""));
+      return isNaN(n) ? undefined : n;
+    }
+    return undefined;
+  });
+  const [financialDueDate, setFinancialDueDate] = useState<string>(() => {
+    if (reminder.financialDueDate) return reminder.financialDueDate;
+    if (!reminder.financialStatus && t === "Payment" && reminder.dueDate) return normalizeDate(reminder.dueDate);
+    return "";
+  });
+
+  // ── Finance UI mode (includes transient income/expense for inline form) ────
+  const [financeMode, setFinanceMode] = useState<FinanceMode>(() => {
+    if (reminder.financialStatus === "receivable") return "receivable";
+    if (reminder.financialStatus === "payable")    return "payable";
+    if (!reminder.financialStatus && t === "Payment" && reminder.amount) return "payable";
+    return "none";
+  });
+
+  // ── Linked Finance Records ─────────────────────────────────────────────────
+  const [linkedFinance, setLinkedFinance] = useState<FinanceEntry[]>(() =>
+    loadFinanceEntries().filter((e) => e.sourceReminderId === reminder.id)
+  );
+  const [showDetail,    setShowDetail]    = useState(false);
+  const [showAddPicker, setShowAddPicker] = useState(false); // mini type picker for "＋新增"
+
+  // ── Inline Finance Record form state ──────────────────────────────────────
+  const initFinType: "income" | "expense" =
+    t === "Airport Transfer" ? "income" : "expense";
+  const [newFinType,    setNewFinType]    = useState<"income" | "expense">(initFinType);
+  const [newFinAmount,  setNewFinAmount]  = useState("");
+  const [newFinCat,     setNewFinCat]     = useState("");
+  const [newFinDate,    setNewFinDate]    = useState(normalizeDate(date));
+  const [newFinNotes,   setNewFinNotes]   = useState("");
+
+  const newFinCategories = newFinType === "income" ? FINANCE_INCOME_CATEGORIES : FINANCE_EXPENSE_CATEGORIES;
+  const canSaveNewFin = !!newFinAmount && !isNaN(parseFloat(newFinAmount)) && parseFloat(newFinAmount) > 0;
+
+  // ── Finance summary ────────────────────────────────────────────────────────
   const incomeTotal  = linkedFinance.filter(e => e.type === "Income").reduce((s, e) => s + e.amount, 0);
   const expenseTotal = linkedFinance.filter(e => e.type === "Expense").reduce((s, e) => s + e.amount, 0);
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
+  // ── Finance mode selector handler ─────────────────────────────────────────
 
-  function handleModeChange(m: TimeMode) {
-    setTimeMode(m);
-    if (m === "allday") { setStartTime(""); setEndTime(""); }
-    if (m === "single") { setEndTime(""); }
+  function handleFinanceModeSelect(mode: FinanceMode) {
+    setFinanceMode(mode);
+    setShowAddPicker(false);
+    // 無/待收/待付 → also update the saved financial status
+    if (mode === "none" || mode === "receivable" || mode === "payable") {
+      setFinancialStatus(mode);
+    }
+    // 收入/支出 → initialize inline form defaults
+    if (mode === "income" || mode === "expense") {
+      setNewFinType(mode);
+      setNewFinAmount(defaultFinanceAmount(reminder, mode));
+      setNewFinCat(defaultCategory(t, mode));
+      setNewFinDate(normalizeDate(date || dueDate));
+      setNewFinNotes("");
+    }
   }
 
-  function handleAddShoppingItem() {
-    const trimmed = newItem.trim();
-    if (!trimmed) return;
-    setShoppingItems((prev) => [...prev, trimmed]);
-    setNewItem("");
+  function handleSaveFinanceRecord() {
+    const amt = parseFloat(newFinAmount.replace(/,/g, ""));
+    if (isNaN(amt) || amt <= 0) return;
+    const now = new Date().toISOString();
+    const entry: FinanceEntry = {
+      id: crypto.randomUUID(),
+      type: newFinType === "income" ? "Income" : "Expense",
+      title: reminder.title || (newFinType === "income" ? "收入" : "支出"),
+      amount: amt,
+      date: newFinDate || now.substring(0, 10),
+      financialCategory: newFinCat,
+      note: newFinNotes.trim() || undefined,
+      createdAt: now,
+      updatedAt: now,
+      sourceReminderId: reminder.id,
+    };
+    const prev = loadFinanceEntries();
+    saveFinanceEntries([...prev, entry]);
+    setLinkedFinance((p) => [...p, entry]);
+    // Revert to non-transient mode (based on saved financial status)
+    setFinanceMode(financialStatus !== "none" ? financialStatus : "none");
+    setShowAddPicker(false);
+    // Reset form
+    setNewFinAmount(""); setNewFinCat(""); setNewFinNotes("");
   }
+
+  function handleCancelFinanceRecord() {
+    setFinanceMode(financialStatus !== "none" ? financialStatus : "none");
+    setShowAddPicker(false);
+  }
+
+  // ── Main save ─────────────────────────────────────────────────────────────
 
   function handleSave() {
     onSave({
@@ -347,25 +371,16 @@ export function EditPage({
       location,
       notes,
       category,
-      flightNumber,
-      transferType,
-      district,
-      vehicleType,
-      price,
+      flightNumber, transferType, district, vehicleType, price,
       shoppingItems,
       amount: isPayment ? amount : (isIncome || isExpense) ? incomeAmount : amount,
       account,
-      hospital,
-      department,
-      source,
-      merchant,
-      reminders,
-      reminderEnabled,
-      calendarEnabled,
+      hospital, department, source, merchant,
+      reminders, reminderEnabled, calendarEnabled,
       sameDayReminder:     reminder.sameDayReminder,
       dayBeforeReminder:   reminder.dayBeforeReminder,
       hoursBeforeReminder: reminder.hoursBeforeReminder,
-      // Financial status
+      // Financial status — only from saved state, never from transient income/expense mode
       financialStatus: financialStatus !== "none" ? financialStatus : undefined,
       expectedAmount:  financialStatus !== "none" ? expectedAmount  : undefined,
       financialDueDate: financialStatus !== "none" ? (financialDueDate || undefined) : undefined,
@@ -373,20 +388,25 @@ export function EditPage({
   }
 
   function handleDeleteConfirm() {
-    if (linkedFinance.length > 0) {
-      setShowDeleteWarning(true);
-    } else {
-      if (window.confirm("確定要刪除這個提醒事項嗎？刪除後無法復原。")) {
-        onDelete();
-      }
-    }
+    const msg = linkedFinance.length > 0
+      ? `此事項有 ${linkedFinance.length} 筆相關收支紀錄。刪除後紀錄將保留但解除關聯。確定刪除？`
+      : "確定要刪除這個提醒事項嗎？刪除後無法復原。";
+    if (window.confirm(msg)) onDelete();
+  }
+
+  function handleAddShoppingItem() {
+    const trimmed = newItem.trim();
+    if (!trimmed) return;
+    setShoppingItems((prev) => [...prev, trimmed]);
+    setNewItem("");
   }
 
   const badgeClass = TYPE_BADGE[t] ?? TYPE_BADGE.Pending;
   const badgeLabel = TYPE_LABEL[t as AllType] ?? t;
+  const re_hasDate = isPayment ? !!dueDate : !!date;
+  const re_hasTime = timeMode !== "allday" && !!startTime;
 
   // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <div className="max-w-2xl mx-auto px-6 py-6 pb-16">
 
@@ -406,7 +426,7 @@ export function EditPage({
         </span>
       </div>
 
-      {/* ══ 1. 基本資訊 ═════════════════════════════════════════════════════════ */}
+      {/* ══ 1. 基本資訊 ═══════════════════════════════════════════════════════ */}
       <SectionLabel>基本資訊</SectionLabel>
 
       <FieldRow label="標題">
@@ -419,19 +439,22 @@ export function EditPage({
 
       {!isPending && (
         <FieldRow label={isPayment ? "截止日期" : "日期"}>
-          <DateField value={isPayment ? dueDate : date} onChange={isPayment ? setDueDate : setDate} />
+          <input
+            type="date"
+            value={isPayment ? dueDate : date}
+            onChange={(e) => isPayment ? setDueDate(e.target.value) : setDate(e.target.value)}
+            className="w-full bg-transparent text-sm text-white focus:outline-none"
+            style={{ colorScheme: "dark" }}
+          />
         </FieldRow>
       )}
 
       {!isPending && (
         <FieldRow label="時間">
           <TimeField
-            mode={timeMode}
-            onModeChange={handleModeChange}
-            startTime={startTime}
-            onStartTime={setStartTime}
-            endTime={endTime}
-            onEndTime={setEndTime}
+            mode={timeMode} onModeChange={setTimeMode}
+            startTime={startTime} onStartTime={setStartTime}
+            endTime={endTime}     onEndTime={setEndTime}
           />
         </FieldRow>
       )}
@@ -442,7 +465,7 @@ export function EditPage({
         </FieldRow>
       )}
 
-      {/* ══ 2. Type-specific 欄位 ═══════════════════════════════════════════════ */}
+      {/* ══ 2. Type-specific ══════════════════════════════════════════════════ */}
 
       {isMedical && (
         <>
@@ -465,14 +488,13 @@ export function EditPage({
             <div className="flex gap-2 flex-wrap">
               {(["接機", "送機", "未指定"] as const).map((opt) => {
                 const val = opt === "未指定" ? "" : opt;
-                const active = transferType === val;
                 return (
                   <button
                     key={opt}
                     type="button"
                     onClick={() => setTransferType(val)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                      active
+                      transferType === val
                         ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
                         : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
                     }`}
@@ -501,7 +523,7 @@ export function EditPage({
       {isShopping && (
         <>
           <SectionLabel>購物清單</SectionLabel>
-          <FieldRow label="購物品項" alignTop>
+          <FieldRow label="購物品項">
             <div className="space-y-1.5">
               {shoppingItems.length === 0 && (
                 <p className="text-xs text-gray-600 py-1 italic">尚無品項</p>
@@ -511,7 +533,7 @@ export function EditPage({
                   <span className="text-sm text-white">{item}</span>
                   <button
                     type="button"
-                    onClick={() => setShoppingItems((prev) => prev.filter((_, i) => i !== idx))}
+                    onClick={() => setShoppingItems((p) => p.filter((_, i) => i !== idx))}
                     className="text-gray-500 hover:text-red-400 transition-colors ml-3 shrink-0 text-base leading-none px-1"
                   >
                     ×
@@ -581,38 +603,37 @@ export function EditPage({
         <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
       </FieldRow>
 
-      {/* ══ 3. 財務資訊 ════════════════════════════════════════════════════════ */}
+      {/* ══ 3. 收支（統一區塊）══════════════════════════════════════════════ */}
       {!isPending && (
         <>
-          <SectionLabel>財務資訊</SectionLabel>
-          <FieldRow label="狀態">
-            <div className="flex gap-2 flex-wrap">
-              {FINANCIAL_STATUS_OPTIONS.map(({ key, label, activeClass }) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setFinancialStatus(key)}
-                  className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
-                    financialStatus === key
-                      ? activeClass
-                      : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </FieldRow>
+          <SectionLabel>收支</SectionLabel>
 
-          {financialStatus !== "none" && (
+          {/* Segmented control: 無 | 待收 | 待付 | 收入 | 支出 */}
+          <div className="flex gap-1.5 flex-wrap pt-2 pb-3 border-b border-white/5">
+            {FINANCE_MODE_OPTIONS.map(({ key, label, activeClass }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => handleFinanceModeSelect(key)}
+                className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
+                  financeMode === key
+                    ? activeClass
+                    : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* 待收 / 待付 expected fields */}
+          {(financeMode === "receivable" || financeMode === "payable") && (
             <>
               <FieldRow label="預計金額">
                 <input
                   type="number"
                   value={expectedAmount ?? ""}
-                  onChange={(e) =>
-                    setExpectedAmount(e.target.value === "" ? undefined : parseFloat(e.target.value))
-                  }
+                  onChange={(e) => setExpectedAmount(e.target.value === "" ? undefined : parseFloat(e.target.value))}
                   placeholder="金額（元）"
                   min={0}
                   step={1}
@@ -620,64 +641,189 @@ export function EditPage({
                   style={{ colorScheme: "dark" }}
                 />
               </FieldRow>
-              <FieldRow label={financialStatus === "receivable" ? "預計收款日" : "付款期限"}>
-                <DateField value={financialDueDate} onChange={setFinancialDueDate} />
+              <FieldRow label={financeMode === "receivable" ? "預計收款日" : "付款期限"}>
+                <input
+                  type="date"
+                  value={financialDueDate}
+                  onChange={(e) => setFinancialDueDate(e.target.value)}
+                  className="w-full bg-transparent text-sm text-white focus:outline-none"
+                  style={{ colorScheme: "dark" }}
+                />
               </FieldRow>
             </>
           )}
-        </>
-      )}
 
-      {/* ══ 4. 相關收支 ════════════════════════════════════════════════════════ */}
-      {!isPending && (
-        <>
-          <SectionLabel>相關收支</SectionLabel>
+          {/* 收入 / 支出 inline Finance Record creation form */}
+          {(financeMode === "income" || financeMode === "expense") && (
+            <div className="mt-3 mb-2 rounded-xl bg-white/[0.04] border border-white/10 p-4 space-y-3">
+              <p className="text-xs text-gray-400 font-medium">
+                {financeMode === "income" ? "新增收入紀錄" : "新增支出紀錄"}
+              </p>
+              {/* Amount */}
+              <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+                <span className="text-gray-500 text-sm shrink-0">NT$</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={newFinAmount}
+                  onChange={(e) => setNewFinAmount(e.target.value)}
+                  placeholder="0"
+                  className="flex-1 bg-transparent text-white text-base font-semibold focus:outline-none placeholder-gray-700"
+                />
+              </div>
+              {/* Category */}
+              <select
+                value={newFinCat}
+                onChange={(e) => setNewFinCat(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
+                style={{ colorScheme: "dark" }}
+              >
+                <option value="">選擇分類</option>
+                {newFinCategories.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              {/* Date */}
+              <input
+                type="date"
+                value={newFinDate}
+                onChange={(e) => setNewFinDate(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
+                style={{ colorScheme: "dark" }}
+              />
+              {/* Notes */}
+              <input
+                type="text"
+                value={newFinNotes}
+                onChange={(e) => setNewFinNotes(e.target.value)}
+                placeholder="備註（選填）"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none"
+              />
+              {/* Buttons */}
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleSaveFinanceRecord}
+                  disabled={!canSaveNewFin}
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-sm transition-colors"
+                >
+                  儲存紀錄
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelFinanceRecord}
+                  className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 font-semibold text-sm"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Finance Records summary */}
-          {linkedFinance.length > 0 ? (
-            <div className="mb-3 space-y-px">
-              {linkedFinance.map((e) => (
-                <div key={e.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-                  <div>
-                    <p className="text-sm text-gray-200">{e.title}</p>
-                    {e.financialCategory && (
-                      <p className="text-xs text-gray-500">{e.date} · {e.financialCategory}</p>
-                    )}
-                  </div>
-                  <span className={`text-sm font-medium tabular-nums ${e.type === "Income" ? "text-teal-400" : "text-rose-400"}`}>
-                    {e.type === "Income" ? "+" : "−"} {fmtCurrency(e.amount)}
-                  </span>
+          {linkedFinance.length > 0 && (
+            <div className="mt-3 py-3 space-y-1 border-b border-white/5">
+              {incomeTotal > 0 && (
+                <p className="text-sm text-teal-400">收入 + {fmtCurrency(incomeTotal)}</p>
+              )}
+              {expenseTotal > 0 && (
+                <p className="text-sm text-rose-400">支出 − {fmtCurrency(expenseTotal)}</p>
+              )}
+              <p className="text-xs text-gray-600">{linkedFinance.length} 筆紀錄</p>
+
+              {/* Actions row */}
+              <div className="flex items-center gap-4 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDetail((p) => !p)}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  {showDetail ? "收合明細" : "查看明細"}
+                </button>
+
+                {!showAddPicker && financeMode !== "income" && financeMode !== "expense" && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddPicker(true)}
+                    className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
+                  >
+                    ＋ 新增
+                  </button>
+                )}
+              </div>
+
+              {/* Mini type picker for ＋新增 */}
+              {showAddPicker && (
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleFinanceModeSelect("income")}
+                    className="px-4 py-2 rounded-xl bg-teal-700/25 text-teal-200 border border-teal-500/30 text-sm font-medium"
+                  >
+                    收入
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleFinanceModeSelect("expense")}
+                    className="px-4 py-2 rounded-xl bg-orange-500/20 text-orange-300 border border-orange-500/40 text-sm font-medium"
+                  >
+                    支出
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddPicker(false)}
+                    className="px-3 py-2 text-gray-500 hover:text-gray-300 text-sm"
+                  >
+                    取消
+                  </button>
                 </div>
-              ))}
-              {/* Finance totals */}
-              {(incomeTotal > 0 || expenseTotal > 0) && (
-                <div className="pt-2 flex flex-wrap gap-3">
-                  {incomeTotal > 0 && (
-                    <span className="text-xs text-teal-400/70">收入 + {fmtCurrency(incomeTotal)}</span>
-                  )}
-                  {expenseTotal > 0 && (
-                    <span className="text-xs text-rose-400/70">支出 − {fmtCurrency(expenseTotal)}</span>
-                  )}
-                  <span className="text-xs text-gray-600">{linkedFinance.length} 筆</span>
+              )}
+
+              {/* Detail list */}
+              {showDetail && (
+                <div className="mt-3 space-y-px">
+                  {linkedFinance.map((e) => (
+                    <div key={e.id} className="flex items-start justify-between py-2 border-b border-white/5 last:border-0">
+                      <div>
+                        <p className="text-sm text-gray-200">{e.title}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {e.date}{e.financialCategory ? ` · ${e.financialCategory}` : ""}
+                        </p>
+                      </div>
+                      <span className={`text-sm font-medium tabular-nums ml-4 shrink-0 ${
+                        e.type === "Income" ? "text-teal-400" : "text-rose-400"
+                      }`}>
+                        {e.type === "Income" ? "+" : "−"} {fmtCurrency(e.amount)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
-          ) : (
-            <p className="text-xs text-gray-600 py-2">尚無相關收支紀錄</p>
           )}
 
-          <button
-            type="button"
-            onClick={() => setShowQuickFinance(true)}
-            className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 mt-1 mb-6"
-          >
-            <span className="text-sm leading-none">＋</span>
-            <span>新增收支</span>
-          </button>
+          {/* ＋新增 — shown only when no Finance Records yet */}
+          {linkedFinance.length === 0 && financeMode !== "income" && financeMode !== "expense" && (
+            <div className="flex gap-2 pt-3 pb-1">
+              <button
+                type="button"
+                onClick={() => handleFinanceModeSelect("income")}
+                className="text-xs text-gray-500 hover:text-teal-300 transition-colors"
+              >
+                ＋ 收入
+              </button>
+              <span className="text-gray-700 text-xs">·</span>
+              <button
+                type="button"
+                onClick={() => handleFinanceModeSelect("expense")}
+                className="text-xs text-gray-500 hover:text-orange-300 transition-colors"
+              >
+                ＋ 支出
+              </button>
+            </div>
+          )}
         </>
       )}
 
-      {/* ══ 5. 提醒設定 ════════════════════════════════════════════════════════ */}
+      {/* ══ 4. 提醒設定 ════════════════════════════════════════════════════════ */}
       {!isPending && (
         <>
           <SectionLabel>提醒設定</SectionLabel>
@@ -706,7 +852,7 @@ export function EditPage({
         </>
       )}
 
-      {/* ══ 6. 儲存／取消 ══════════════════════════════════════════════════════ */}
+      {/* ══ 5. 儲存／取消 ══════════════════════════════════════════════════════ */}
       <div className="mt-6 flex gap-3">
         <button
           onClick={handleSave}
@@ -722,55 +868,13 @@ export function EditPage({
         </button>
       </div>
 
-      {/* ══ 7. 刪除 ════════════════════════════════════════════════════════════ */}
+      {/* ══ 6. 刪除 ════════════════════════════════════════════════════════════ */}
       <button
         onClick={handleDeleteConfirm}
         className="w-full mt-3 py-3.5 rounded-xl text-red-400 hover:bg-red-500/8 border border-red-500/20 text-sm font-semibold transition-all"
       >
         刪除此事項
       </button>
-
-      {/* Quick Finance Modal */}
-      {showQuickFinance && (
-        <QuickFinanceModal
-          reminder={reminder}
-          onSave={(entry) => {
-            setLinkedFinance((prev) => [...prev, entry]);
-            setShowQuickFinance(false);
-          }}
-          onCancel={() => setShowQuickFinance(false)}
-        />
-      )}
-
-      {/* Delete Warning Modal */}
-      {showDeleteWarning && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
-          <div className="w-full max-w-sm bg-gray-900 border border-white/10 rounded-2xl p-6 space-y-4">
-            <h3 className="text-base font-semibold text-white">確認刪除</h3>
-            <p className="text-sm text-gray-400 leading-relaxed">
-              此事項有{" "}
-              <span className="text-white font-medium">{linkedFinance.length} 筆</span>
-              {" "}相關收支紀錄。刪除事項後，收支紀錄將保留，但會解除事項關聯。
-            </p>
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setShowDeleteWarning(false)}
-                className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 text-sm font-medium"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowDeleteWarning(false); onDelete(); }}
-                className="flex-1 py-2.5 rounded-xl bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium transition-colors"
-              >
-                刪除事項
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

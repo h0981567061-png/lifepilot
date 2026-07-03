@@ -1,0 +1,347 @@
+Task-010A.1：簡化 Reminder Editor 的財務與收支操作介面
+
+目前 Reminder EditPage 同時存在：
+
+1. 財務資訊
+   - 無
+   - 待收
+   - 待付
+
+2. 相關收支
+   - 收支紀錄列表
+   - 收入／支出摘要
+   - ＋新增收支
+
+目前操作概念重複，畫面過於複雜。
+
+本次目標：
+
+將「財務資訊」與「相關收支」在 UI 上整合為單一：
+
+「收支」
+
+重要：
+只整合 UI 與操作流程。
+不要破壞底層 Reminder 財務狀態與 Finance Record 的資料分離。
+
+────────────────
+
+一、統一收支區塊
+
+Reminder Editor 只顯示一個主要區塊：
+
+收支
+
+提供以下選項：
+
+無
+待收
+待付
+收入
+支出
+
+使用 segmented control、按鈕群組或目前專案一致的選擇 UI。
+
+不要同時顯示兩個獨立的大區塊：
+
+財務資訊
+相關收支
+
+────────────────
+
+二、選擇「無」
+
+選擇：
+
+無
+
+行為：
+
+不顯示待收／待付輸入欄位。
+
+如果目前沒有 Finance Record，
+不顯示其他財務內容。
+
+如果已經存在關聯 Finance Record，
+不能刪除既有紀錄，
+改為顯示簡短摘要。
+
+────────────────
+
+三、選擇「待收」
+
+顯示：
+
+金額
+預計收款日（選填）
+
+儲存到 Reminder：
+
+financialStatus = receivable
+expectedAmount
+financialDueDate
+
+不要建立 Income Finance Record。
+
+────────────────
+
+四、選擇「待付」
+
+顯示：
+
+金額
+付款期限（選填）
+
+儲存到 Reminder：
+
+financialStatus = payable
+expectedAmount
+financialDueDate
+
+不要建立 Expense Finance Record。
+
+────────────────
+
+五、選擇「收入」
+
+顯示簡單新增收入介面：
+
+金額
+收支分類
+日期
+備註（選填）
+
+儲存時建立真正的 Income Finance Record，
+並使用目前既有 sourceReminderId 關聯 Reminder。
+
+不要將 Income 存成 Reminder expectedAmount。
+
+────────────────
+
+六、選擇「支出」
+
+顯示簡單新增支出介面：
+
+金額
+收支分類
+日期
+備註（選填）
+
+儲存時建立真正的 Expense Finance Record，
+並使用目前既有 sourceReminderId 關聯 Reminder。
+
+不要將 Expense 存成 Reminder expectedAmount。
+
+────────────────
+
+七、已有相關收支時簡化顯示
+
+目前 EditPage 會直接展開多筆完整收支資料。
+
+請改為摘要優先。
+
+例如：
+
+收支
+
+支出合計
+- NT$ 1,600
+
+2 筆紀錄
+
+[ 查看明細 ] [ ＋新增 ]
+
+如果只有收入：
+
+收入合計
++ NT$ 5,000
+
+如果同時有收入與支出：
+
+收入 + NT$ 5,000
+支出 - NT$ 1,600
+
+3 筆紀錄
+
+不要預設展開所有完整紀錄。
+
+────────────────
+
+八、查看明細
+
+點擊：
+
+查看明細
+
+才展開或開啟目前既有的相關收支紀錄內容。
+
+保留：
+
+每筆收入／支出
+金額
+日期
+分類
+
+如果目前沒有合適的 Modal，
+可以使用簡單展開／收合。
+
+不要為本次建立複雜的新頁面。
+
+────────────────
+
+九、＋新增
+
+已有 Finance Record 時仍可點：
+
+＋新增
+
+點擊後選擇：
+
+收入
+支出
+
+然後使用現有 Finance Editor 或現有新增收支流程。
+
+不要重做 Finance Store。
+
+不要修改 sourceReminderId 邏輯。
+
+────────────────
+
+十、Payment 相容
+
+例如：
+
+信用卡繳費
+23560
+2026/08/05
+
+UI 預設顯示：
+
+收支
+待付
+
+金額：
+23,560
+
+付款期限：
+2026/08/05
+
+不要再另外顯示一個重複的「相關收支」大區塊。
+
+如果已有實際 Finance Record，
+在同一個收支區塊下顯示摘要。
+
+────────────────
+
+十一、AirportTransfer 相容
+
+例如：
+
+CI173 接機
+接送費用 1000
+
+如果 financialStatus = receivable：
+
+顯示：
+
+收支
+待收
+NT$ 1,000
+
+如果另有：
+
+停車費 100
+過路費 40
+
+顯示摘要：
+
+待收 NT$ 1,000
+
+支出 - NT$ 140
+2 筆紀錄
+
+[ 查看明細 ] [ ＋新增 ]
+
+────────────────
+
+十二、Medical 測試
+
+目前範例：
+
+帶媽媽看骨科
+
+Finance Records：
+
+Expense 1500
+Expense 100
+
+預期 EditPage 顯示：
+
+收支
+
+支出 - NT$ 1,600
+
+2 筆紀錄
+
+[ 查看明細 ] [ ＋新增 ]
+
+不要預設將兩筆完整紀錄全部展開。
+
+────────────────
+
+十三、重要資料原則
+
+UI 可以統一，
+但底層資料概念保持分離。
+
+待收／待付：
+
+Reminder financialStatus
+Reminder expectedAmount
+Reminder financialDueDate
+
+實際收入／支出：
+
+Finance Record
+sourceReminderId
+
+不要將待收直接建立 Income。
+
+不要將待付直接建立 Expense。
+
+不要將 Finance Record 金額寫回 expectedAmount。
+
+────────────────
+
+十四、不要修改
+
+不要修改 Groq API。
+不要修改 /api/parse。
+不要修改 AI Parser。
+不要修改 Fallback Parser。
+不要修改 Finance Store 資料結構。
+不要修改 Reminder Store 既有欄位語意。
+不要修改 sourceReminderId。
+不要修改群組管理。
+不要修改 Bottom Navigation。
+不要清除 LocalStorage。
+不要刪除現有 Finance Record。
+不要大幅重構 App.tsx。
+不要自動開始下一個 Task。
+
+本次只做：
+Reminder Editor 收支 UI 簡化與操作整合。
+
+完成後請使用繁體中文說明：
+
+1. 修改哪些檔案。
+2. 原本兩個區塊如何整合。
+3. 無／待收／待付／收入／支出的操作方式。
+4. 如何保持 Reminder 與 Finance Record 資料分離。
+5. 已有多筆收支如何摘要顯示。
+6. 查看明細如何運作。
+7. Payment 如何相容。
+8. AirportTransfer 如何相容。
+9. Medical 兩筆支出測試結果。
+10. TypeScript 是否通過。
