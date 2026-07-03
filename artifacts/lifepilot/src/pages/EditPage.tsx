@@ -1,8 +1,10 @@
 import { useState } from "react";
-import type { Reminder } from "../store";
+import type { Reminder, ReminderNotification } from "../store";
 import { normalizeDate } from "../utils";
+import { getCategoriesForType, TYPE_LABEL, type AllType } from "../previewTypes";
+import { ReminderEditor } from "../components/ReminderEditor";
 
-// ── UI helpers ────────────────────────────────────────────────────────────────
+// ── UI primitives ─────────────────────────────────────────────────────────────
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -12,9 +14,13 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+function FieldRow({ label, children, alignTop = false }: {
+  label: string;
+  children: React.ReactNode;
+  alignTop?: boolean;
+}) {
   return (
-    <div className="flex items-start gap-4 py-3 border-b border-white/5">
+    <div className={`flex gap-4 py-3 border-b border-white/5 ${alignTop ? "items-start" : "items-start"}`}>
       <span className="w-20 text-xs text-gray-500 pt-1.5 shrink-0">{label}</span>
       <div className="flex-1 min-w-0">{children}</div>
     </div>
@@ -53,16 +59,20 @@ function TextArea({ value, onChange, placeholder }: {
   );
 }
 
-function Toggle({ label, description, checked, onChange, indent = false }: {
+function Toggle({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
   label: string;
   description?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
-  indent?: boolean;
 }) {
   return (
     <div
-      className={`flex items-center justify-between py-3.5 border-b border-white/5 cursor-pointer select-none ${indent ? "pl-4" : ""}`}
+      className="flex items-center justify-between py-3.5 border-b border-white/5 cursor-pointer select-none"
       onClick={() => onChange(!checked)}
     >
       <div>
@@ -71,7 +81,10 @@ function Toggle({ label, description, checked, onChange, indent = false }: {
       </div>
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); onChange(!checked); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onChange(!checked);
+        }}
         className={`relative w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0 ml-4 ${
           checked ? "bg-blue-500" : "bg-white/15"
         }`}
@@ -86,27 +99,70 @@ function Toggle({ label, description, checked, onChange, indent = false }: {
   );
 }
 
-// ─── Type badge constants ─────────────────────────────────────────────────────
+// ─── Type badge styles ────────────────────────────────────────────────────────
 
-const TYPE_LABEL: Record<string, string> = {
-  Course: "課程",
-  "Airport Transfer": "接送機",
-  Medical: "醫療",
-  Shopping: "購物",
-  Payment: "付款",
-  Pending: "待確認",
-};
-
-const TYPE_COLOR: Record<string, string> = {
-  Course: "bg-blue-500/15 text-blue-300 border-blue-500/25",
+const TYPE_BADGE: Record<string, string> = {
+  Course:             "bg-blue-500/15 text-blue-300 border-blue-500/25",
   "Airport Transfer": "bg-amber-500/15 text-amber-300 border-amber-500/25",
-  Medical: "bg-rose-500/15 text-rose-300 border-rose-500/25",
-  Shopping: "bg-emerald-500/15 text-emerald-300 border-emerald-500/25",
-  Payment: "bg-purple-500/15 text-purple-300 border-purple-500/25",
-  Pending: "bg-white/10 text-gray-400 border-white/15",
+  Medical:            "bg-emerald-500/15 text-emerald-300 border-emerald-500/25",
+  Shopping:           "bg-purple-500/15 text-purple-300 border-purple-500/25",
+  Payment:            "bg-rose-500/15 text-rose-300 border-rose-500/25",
+  Income:             "bg-teal-500/15 text-teal-300 border-teal-500/25",
+  Expense:            "bg-orange-500/15 text-orange-300 border-orange-500/25",
+  Work:               "bg-sky-500/15 text-sky-300 border-sky-500/25",
+  Family:             "bg-pink-500/15 text-pink-300 border-pink-500/25",
+  General:            "bg-white/10 text-gray-400 border-white/15",
+  Pending:            "bg-white/10 text-gray-400 border-white/15",
 };
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Reusable sub-components ──────────────────────────────────────────────────
+
+function DateField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <input
+      type="date"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full bg-transparent text-sm text-white focus:outline-none"
+      style={{ colorScheme: "dark" }}
+    />
+  );
+}
+
+function CategorySelect({
+  type,
+  value,
+  onChange,
+}: {
+  type: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const options = getCategoriesForType(type as AllType);
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full bg-transparent text-sm text-white focus:outline-none"
+      style={{ colorScheme: "dark" }}
+    >
+      <option value="">未分類</option>
+      {options.map((cat) => (
+        <option key={cat} value={cat} className="bg-gray-900 text-white">
+          {cat}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+// ─── EditPage ─────────────────────────────────────────────────────────────────
 
 export function EditPage({
   reminder,
@@ -119,44 +175,76 @@ export function EditPage({
   onCancel: () => void;
   onDelete: () => void;
 }) {
-  // ── Common fields ──
-  const [title, setTitle] = useState(reminder.title);
-  const [date, setDate] = useState(normalizeDate(reminder.date));
-  const [startTime, setStartTime] = useState(reminder.startTime);
-  const [endTime, setEndTime] = useState(reminder.endTime);
-  const [location, setLocation] = useState(reminder.location);
-  const [notes, setNotes] = useState(reminder.notes);
+  const t = reminder.type;
 
-  // ── Airport Transfer ──
+  // ── Common state ──────────────────────────────────────────────────────────
+  const [title,     setTitle]     = useState(reminder.title);
+  const [date,      setDate]      = useState(normalizeDate(reminder.date));
+  const [startTime, setStartTime] = useState(reminder.startTime);
+  const [endTime,   setEndTime]   = useState(reminder.endTime);
+  const [location,  setLocation]  = useState(reminder.location);
+  const [notes,     setNotes]     = useState(reminder.notes);
+  const [category,  setCategory]  = useState(reminder.category ?? "");
+
+  // ── Airport Transfer ──────────────────────────────────────────────────────
   const [flightNumber, setFlightNumber] = useState(reminder.flightNumber ?? "");
   const [transferType, setTransferType] = useState(reminder.transferType ?? "");
-  const [district, setDistrict] = useState(reminder.district ?? "");
-  const [vehicleType, setVehicleType] = useState(reminder.vehicleType ?? "");
-  const [price, setPrice] = useState(reminder.price ?? "");
+  const [district,     setDistrict]     = useState(reminder.district ?? "");
+  const [vehicleType,  setVehicleType]  = useState(reminder.vehicleType ?? "");
+  const [price,        setPrice]        = useState(reminder.price ?? "");
 
-  // ── Shopping ──
-  const [shoppingItems, setShoppingItems] = useState<string[]>(reminder.shoppingItems ?? []);
+  // ── Shopping ──────────────────────────────────────────────────────────────
+  const [shoppingItems, setShoppingItems] = useState<string[]>(
+    reminder.shoppingItems ?? []
+  );
   const [newItem, setNewItem] = useState("");
 
-  // ── Payment ──
-  const [dueDate, setDueDate] = useState(normalizeDate(reminder.dueDate ?? ""));
-  const [amount, setAmount] = useState(reminder.amount ?? "");
-
-  // ── Medical ──
-  const [hospital, setHospital] = useState(reminder.hospital ?? "");
-  const [department, setDepartment] = useState(reminder.department ?? "");
-
-  // ── Reminder settings ──
-  const [reminderEnabled, setReminderEnabled] = useState(reminder.reminderEnabled ?? true);
-  const [calendarEnabled, setCalendarEnabled] = useState(reminder.calendarEnabled ?? false);
-  const [sameDayReminder, setSameDayReminder] = useState(reminder.sameDayReminder ?? true);
-  const [dayBeforeReminder, setDayBeforeReminder] = useState(reminder.dayBeforeReminder ?? false);
-  const [hoursBeforeEnabled, setHoursBeforeEnabled] = useState(
-    reminder.hoursBeforeReminder != null
+  // ── Payment ───────────────────────────────────────────────────────────────
+  const [dueDate,  setDueDate]  = useState(
+    normalizeDate(reminder.dueDate ?? reminder.date ?? "")
   );
-  const [hoursBeforeValue, setHoursBeforeValue] = useState<number>(
-    reminder.hoursBeforeReminder ?? 2
+  const [amount,   setAmount]   = useState(reminder.amount ?? "");
+  const [account,  setAccount]  = useState(reminder.account ?? "");
+
+  // ── Medical ───────────────────────────────────────────────────────────────
+  const [hospital,    setHospital]    = useState(reminder.hospital ?? "");
+  const [department,  setDepartment]  = useState(reminder.department ?? "");
+
+  // ── Income ────────────────────────────────────────────────────────────────
+  const [source, setSource] = useState(reminder.source ?? "");
+
+  // ── Expense ───────────────────────────────────────────────────────────────
+  const [merchant, setMerchant] = useState(reminder.merchant ?? "");
+
+  // ── Reminder notifications (v2) ───────────────────────────────────────────
+  const [reminders, setReminders] = useState<ReminderNotification[]>(
+    reminder.reminders ?? []
   );
+
+  // ── Legacy reminder settings (preserved for backward compat) ─────────────
+  const [reminderEnabled, setReminderEnabled] = useState(
+    reminder.reminderEnabled ?? true
+  );
+  const [calendarEnabled, setCalendarEnabled] = useState(
+    reminder.calendarEnabled ?? false
+  );
+
+  // ── Computed flags ────────────────────────────────────────────────────────
+  const isPayment  = t === "Payment";
+  const isCourse   = t === "Course";
+  const isAirport  = t === "Airport Transfer";
+  const isMedical  = t === "Medical";
+  const isShopping = t === "Shopping";
+  const isIncome   = t === "Income";
+  const isExpense  = t === "Expense";
+  const isPending  = t === "Pending";
+  const isGeneral  = !isPayment && !isCourse && !isAirport && !isMedical && !isShopping && !isIncome && !isExpense;
+
+  // What to pass into ReminderEditor
+  const re_hasDate = isPayment ? !!dueDate : !!date;
+  const re_hasTime = (isCourse || isAirport || isMedical || (!isPending && isGeneral)) ? !!startTime : false;
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   function handleAddShoppingItem() {
     const trimmed = newItem.trim();
@@ -167,13 +255,33 @@ export function EditPage({
 
   function handleSave() {
     onSave({
-      title, date, startTime, endTime, location, notes,
-      flightNumber, transferType, district, vehicleType, price,
+      title,
+      date,
+      startTime,
+      endTime,
+      location,
+      notes,
+      category,
+      flightNumber,
+      transferType,
+      district,
+      vehicleType,
+      price,
       shoppingItems,
-      dueDate, amount,
-      hospital, department,
-      reminderEnabled, calendarEnabled, sameDayReminder, dayBeforeReminder,
-      hoursBeforeReminder: hoursBeforeEnabled ? hoursBeforeValue : null,
+      dueDate,
+      amount,
+      account,
+      hospital,
+      department,
+      source,
+      merchant,
+      reminders,
+      // Legacy fields — always preserved so old data is never wiped
+      reminderEnabled,
+      calendarEnabled,
+      sameDayReminder:     reminder.sameDayReminder,
+      dayBeforeReminder:   reminder.dayBeforeReminder,
+      hoursBeforeReminder: reminder.hoursBeforeReminder,
     });
   }
 
@@ -183,19 +291,28 @@ export function EditPage({
     }
   }
 
-  const badgeClass = TYPE_COLOR[reminder.type] ?? TYPE_COLOR.Pending;
-  const badgeLabel = TYPE_LABEL[reminder.type] ?? reminder.type;
+  const badgeClass = TYPE_BADGE[t] ?? TYPE_BADGE.Pending;
+  const badgeLabel = TYPE_LABEL[t as AllType] ?? t;
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="max-w-2xl mx-auto px-6 py-6 pb-16">
-      {/* ── Header ── */}
+
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <button
           onClick={onCancel}
           className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors"
         >
           <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
-            <path d="M10 12L6 8l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M10 12L6 8l4-4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
           返回
         </button>
@@ -204,45 +321,82 @@ export function EditPage({
         </span>
       </div>
 
-      {/* ── 基本資訊 ── */}
-      <SectionLabel>基本資訊</SectionLabel>
-      <FieldRow label="標題">
-        <TextInput value={title} onChange={setTitle} placeholder="事項標題" />
-      </FieldRow>
-      <FieldRow label="日期">
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="w-full bg-transparent text-sm text-white focus:outline-none"
-          style={{ colorScheme: "dark" }}
-        />
-      </FieldRow>
-      <FieldRow label="開始時間">
-        <TextInput value={startTime} onChange={setStartTime} placeholder="HH:MM，如 09:00" />
-      </FieldRow>
-      <FieldRow label="結束時間">
-        <TextInput value={endTime} onChange={setEndTime} placeholder="HH:MM，如 12:00" />
-      </FieldRow>
-      <FieldRow label="地點">
-        <TextInput value={location} onChange={setLocation} placeholder="地點" />
-      </FieldRow>
-      <FieldRow label="備註">
-        <TextArea value={notes} onChange={setNotes} placeholder="備註（可選）" />
-      </FieldRow>
-
-      {/* ── 接送機特殊欄位 ── */}
-      {reminder.type === "Airport Transfer" && (
+      {/* ══════════════════════════════════════════════════════════════════════
+          PAYMENT — only payment-specific fields; no general date/time/location
+          ══════════════════════════════════════════════════════════════════════ */}
+      {isPayment && (
         <>
-          <SectionLabel>接送機資料</SectionLabel>
-          <FieldRow label="類型">
-            <div className="flex gap-2">
+          <SectionLabel>付款資訊</SectionLabel>
+          <FieldRow label="付款名稱">
+            <TextInput value={title} onChange={setTitle} placeholder="付款名稱" />
+          </FieldRow>
+          <FieldRow label="我的分類">
+            <CategorySelect type={t} value={category} onChange={setCategory} />
+          </FieldRow>
+          <FieldRow label="截止日期">
+            <DateField value={dueDate} onChange={setDueDate} />
+          </FieldRow>
+          <FieldRow label="金額">
+            <TextInput value={amount} onChange={setAmount} placeholder="金額（元）" />
+          </FieldRow>
+          <FieldRow label="帳戶">
+            <TextInput
+              value={account}
+              onChange={setAccount}
+              placeholder="帳戶或繳費方式（選填）"
+            />
+          </FieldRow>
+          <FieldRow label="備註">
+            <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
+          </FieldRow>
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          COURSE — needs both startTime and endTime
+          ══════════════════════════════════════════════════════════════════════ */}
+      {isCourse && (
+        <>
+          <SectionLabel>課程資訊</SectionLabel>
+          <FieldRow label="課程名稱">
+            <TextInput value={title} onChange={setTitle} placeholder="課程名稱" />
+          </FieldRow>
+          <FieldRow label="我的分類">
+            <CategorySelect type={t} value={category} onChange={setCategory} />
+          </FieldRow>
+          <FieldRow label="日期">
+            <DateField value={date} onChange={setDate} />
+          </FieldRow>
+          <FieldRow label="開始時間">
+            <TextInput value={startTime} onChange={setStartTime} placeholder="如 09:00" />
+          </FieldRow>
+          <FieldRow label="結束時間">
+            <TextInput value={endTime} onChange={setEndTime} placeholder="如 12:00" />
+          </FieldRow>
+          <FieldRow label="地點">
+            <TextInput value={location} onChange={setLocation} placeholder="地點（選填）" />
+          </FieldRow>
+          <FieldRow label="備註">
+            <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
+          </FieldRow>
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          AIRPORT TRANSFER
+          ══════════════════════════════════════════════════════════════════════ */}
+      {isAirport && (
+        <>
+          <SectionLabel>接送機資訊</SectionLabel>
+          <FieldRow label="接送類型">
+            <div className="flex gap-2 flex-wrap">
               {(["接機", "送機", "未指定"] as const).map((opt) => {
                 const val = opt === "未指定" ? "" : opt;
                 const active = transferType === val;
                 return (
                   <button
                     key={opt}
+                    type="button"
                     onClick={() => setTransferType(val)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
                       active
@@ -259,149 +413,254 @@ export function EditPage({
           <FieldRow label="航班號碼">
             <TextInput value={flightNumber} onChange={setFlightNumber} placeholder="如 CI173" />
           </FieldRow>
+          <FieldRow label="日期">
+            <DateField value={date} onChange={setDate} />
+          </FieldRow>
+          <FieldRow label="接送時間">
+            <TextInput value={startTime} onChange={setStartTime} placeholder="如 14:30" />
+          </FieldRow>
           <FieldRow label="地區">
-            <TextInput value={district} onChange={setDistrict} placeholder="如 中山" />
+            <TextInput value={district} onChange={setDistrict} placeholder="如 中山、松山機場" />
           </FieldRow>
           <FieldRow label="車型">
             <TextInput value={vehicleType} onChange={setVehicleType} placeholder="如 轎車、廂型" />
           </FieldRow>
           <FieldRow label="金額">
-            <TextInput value={price} onChange={setPrice} placeholder="如 1000" />
+            <TextInput value={price} onChange={setPrice} placeholder="金額（元）" />
+          </FieldRow>
+          <FieldRow label="備註">
+            <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
           </FieldRow>
         </>
       )}
 
-      {/* ── 購物品項 ── */}
-      {reminder.type === "Shopping" && (
-        <>
-          <SectionLabel>購物品項</SectionLabel>
-          <div className="mt-1 flex flex-col gap-1.5">
-            {shoppingItems.length === 0 && (
-              <p className="text-xs text-gray-600 py-2 italic">尚無品項</p>
-            )}
-            {shoppingItems.map((item, idx) => (
-              <div
-                key={idx}
-                className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-white/[0.04] border border-white/8"
-              >
-                <span className="text-sm text-white">{item}</span>
-                <button
-                  onClick={() => setShoppingItems((prev) => prev.filter((_, i) => i !== idx))}
-                  className="text-gray-500 hover:text-red-400 transition-colors ml-3 shrink-0"
-                >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none">
-                    <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2 mt-3">
-            <input
-              type="text"
-              value={newItem}
-              onChange={(e) => setNewItem(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleAddShoppingItem(); }}
-              placeholder="輸入品項名稱，Enter 新增"
-              className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50 transition-colors"
-            />
-            <button
-              onClick={handleAddShoppingItem}
-              className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm text-gray-300 border border-white/10 transition-all shrink-0"
-            >
-              新增
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* ── 付款資訊 ── */}
-      {reminder.type === "Payment" && (
-        <>
-          <SectionLabel>付款資訊</SectionLabel>
-          <FieldRow label="截止日期">
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="w-full bg-transparent text-sm text-white focus:outline-none"
-              style={{ colorScheme: "dark" }}
-            />
-          </FieldRow>
-          <FieldRow label="金額">
-            <TextInput value={amount} onChange={setAmount} placeholder="如 23560" />
-          </FieldRow>
-        </>
-      )}
-
-      {/* ── 醫療資訊 ── */}
-      {reminder.type === "Medical" && (
+      {/* ══════════════════════════════════════════════════════════════════════
+          MEDICAL — no endTime; only single appointment time
+          ══════════════════════════════════════════════════════════════════════ */}
+      {isMedical && (
         <>
           <SectionLabel>醫療資訊</SectionLabel>
+          <FieldRow label="事由">
+            <TextInput value={title} onChange={setTitle} placeholder="看診事由" />
+          </FieldRow>
+          <FieldRow label="我的分類">
+            <CategorySelect type={t} value={category} onChange={setCategory} />
+          </FieldRow>
           <FieldRow label="醫院">
             <TextInput value={hospital} onChange={setHospital} placeholder="醫院名稱" />
           </FieldRow>
           <FieldRow label="科別">
-            <TextInput value={department} onChange={setDepartment} placeholder="如 神經內科" />
+            <TextInput
+              value={department}
+              onChange={setDepartment}
+              placeholder="如 骨科、神經內科"
+            />
+          </FieldRow>
+          <FieldRow label="日期">
+            <DateField value={date} onChange={setDate} />
+          </FieldRow>
+          <FieldRow label="看診時間">
+            <TextInput value={startTime} onChange={setStartTime} placeholder="如 14:00" />
+          </FieldRow>
+          <FieldRow label="備註">
+            <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
           </FieldRow>
         </>
       )}
 
-      {/* ── 提醒設定 ── */}
-      <SectionLabel>提醒設定</SectionLabel>
-      <Toggle
-        label="提醒事項"
-        description="加入提醒清單"
-        checked={reminderEnabled}
-        onChange={setReminderEnabled}
-      />
-      <Toggle
-        label="行事曆"
-        description="加入行事曆（尚未串接）"
-        checked={calendarEnabled}
-        onChange={setCalendarEnabled}
-      />
-
-      {reminderEnabled && (
-        <div className="ml-1 pl-3 border-l border-white/8 mt-1">
-          <Toggle
-            label="當日提醒"
-            checked={sameDayReminder}
-            onChange={setSameDayReminder}
-            indent
-          />
-          <Toggle
-            label="前一天提醒"
-            checked={dayBeforeReminder}
-            onChange={setDayBeforeReminder}
-            indent
-          />
-          <Toggle
-            label="提前提醒"
-            checked={hoursBeforeEnabled}
-            onChange={setHoursBeforeEnabled}
-            indent
-          />
-          {hoursBeforeEnabled && (
-            <div className="flex items-center gap-3 pl-4 py-2.5 border-b border-white/5">
-              <span className="text-xs text-gray-500 shrink-0">提前幾小時</span>
-              <select
-                value={hoursBeforeValue}
-                onChange={(e) => setHoursBeforeValue(Number(e.target.value))}
-                className="bg-white/5 border border-white/15 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500/50"
-              >
-                {[1, 2, 3, 6, 12, 24].map((h) => (
-                  <option key={h} value={h} className="bg-gray-900 text-white">
-                    {h} 小時前
-                  </option>
-                ))}
-              </select>
+      {/* ══════════════════════════════════════════════════════════════════════
+          SHOPPING — no time fields
+          ══════════════════════════════════════════════════════════════════════ */}
+      {isShopping && (
+        <>
+          <SectionLabel>購物清單</SectionLabel>
+          <FieldRow label="清單名稱">
+            <TextInput value={title} onChange={setTitle} placeholder="清單名稱（選填）" />
+          </FieldRow>
+          <FieldRow label="我的分類">
+            <CategorySelect type={t} value={category} onChange={setCategory} />
+          </FieldRow>
+          <FieldRow label="日期">
+            <DateField value={date} onChange={setDate} />
+          </FieldRow>
+          <FieldRow label="購物品項" alignTop>
+            <div className="space-y-1.5">
+              {shoppingItems.length === 0 && (
+                <p className="text-xs text-gray-600 py-1 italic">尚無品項</p>
+              )}
+              {shoppingItems.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between py-2 px-3 rounded-lg bg-white/[0.04] border border-white/8"
+                >
+                  <span className="text-sm text-white">{item}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShoppingItems((prev) => prev.filter((_, i) => i !== idx))
+                    }
+                    className="text-gray-500 hover:text-red-400 transition-colors ml-3 shrink-0 text-base leading-none px-1"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <div className="flex gap-2 mt-2">
+                <input
+                  type="text"
+                  value={newItem}
+                  onChange={(e) => setNewItem(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleAddShoppingItem();
+                  }}
+                  placeholder="輸入品項，Enter 新增"
+                  className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddShoppingItem}
+                  className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm text-gray-300 border border-white/10 transition-all shrink-0"
+                >
+                  新增
+                </button>
+              </div>
             </div>
-          )}
-        </div>
+          </FieldRow>
+          <FieldRow label="備註">
+            <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
+          </FieldRow>
+        </>
       )}
 
-      {/* ── 操作按鈕 ── */}
+      {/* ══════════════════════════════════════════════════════════════════════
+          INCOME
+          ══════════════════════════════════════════════════════════════════════ */}
+      {isIncome && (
+        <>
+          <SectionLabel>收入資訊</SectionLabel>
+          <FieldRow label="標題">
+            <TextInput value={title} onChange={setTitle} placeholder="收入名稱" />
+          </FieldRow>
+          <FieldRow label="日期">
+            <DateField value={date} onChange={setDate} />
+          </FieldRow>
+          <FieldRow label="金額">
+            <TextInput value={amount} onChange={setAmount} placeholder="收入金額（元）" />
+          </FieldRow>
+          <FieldRow label="收入來源">
+            <TextInput
+              value={source}
+              onChange={setSource}
+              placeholder="如 薪資、接送收入（選填）"
+            />
+          </FieldRow>
+          <FieldRow label="我的分類">
+            <CategorySelect type={t} value={category} onChange={setCategory} />
+          </FieldRow>
+          <FieldRow label="備註">
+            <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
+          </FieldRow>
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          EXPENSE
+          ══════════════════════════════════════════════════════════════════════ */}
+      {isExpense && (
+        <>
+          <SectionLabel>支出資訊</SectionLabel>
+          <FieldRow label="標題">
+            <TextInput value={title} onChange={setTitle} placeholder="支出名稱" />
+          </FieldRow>
+          <FieldRow label="日期">
+            <DateField value={date} onChange={setDate} />
+          </FieldRow>
+          <FieldRow label="金額">
+            <TextInput value={amount} onChange={setAmount} placeholder="支出金額（元）" />
+          </FieldRow>
+          <FieldRow label="商家">
+            <TextInput
+              value={merchant}
+              onChange={setMerchant}
+              placeholder="商家或地點（選填）"
+            />
+          </FieldRow>
+          <FieldRow label="我的分類">
+            <CategorySelect type={t} value={category} onChange={setCategory} />
+          </FieldRow>
+          <FieldRow label="備註">
+            <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
+          </FieldRow>
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          GENERAL / WORK / FAMILY / PENDING (fallback)
+          ══════════════════════════════════════════════════════════════════════ */}
+      {isGeneral && (
+        <>
+          <SectionLabel>基本資訊</SectionLabel>
+          <FieldRow label="標題">
+            <TextInput value={title} onChange={setTitle} placeholder="事項標題" />
+          </FieldRow>
+          {!isPending && (
+            <FieldRow label="我的分類">
+              <CategorySelect type={t} value={category} onChange={setCategory} />
+            </FieldRow>
+          )}
+          {!isPending && (
+            <FieldRow label="日期">
+              <DateField value={date} onChange={setDate} />
+            </FieldRow>
+          )}
+          {!isPending && (
+            <FieldRow label="時間">
+              <TextInput value={startTime} onChange={setStartTime} placeholder="如 09:00" />
+            </FieldRow>
+          )}
+          {!isPending && (
+            <FieldRow label="地點">
+              <TextInput value={location} onChange={setLocation} placeholder="地點（選填）" />
+            </FieldRow>
+          )}
+          <FieldRow label="備註">
+            <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
+          </FieldRow>
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          REMINDER SETTINGS — all types (except Pending)
+          ══════════════════════════════════════════════════════════════════════ */}
+      {!isPending && (
+        <>
+          <SectionLabel>提醒設定</SectionLabel>
+          <Toggle
+            label="提醒事項"
+            description="啟用提醒通知"
+            checked={reminderEnabled}
+            onChange={setReminderEnabled}
+          />
+          <Toggle
+            label="行事曆"
+            description="加入行事曆（尚未串接）"
+            checked={calendarEnabled}
+            onChange={setCalendarEnabled}
+          />
+          {reminderEnabled && (
+            <div className="pt-3 pb-1">
+              <ReminderEditor
+                reminders={reminders}
+                onChange={setReminders}
+                hasDate={re_hasDate}
+                hasTime={re_hasTime}
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Action buttons ───────────────────────────────────────────────────── */}
       <div className="mt-10 flex gap-3">
         <button
           onClick={handleSave}
