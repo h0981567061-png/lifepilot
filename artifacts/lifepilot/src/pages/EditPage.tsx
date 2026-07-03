@@ -274,8 +274,12 @@ function FinancialItemRow({
         }`}>
           {isReceivable ? "待收" : "待付"}
         </span>
-        {item.dueDate && <p className="text-xs text-gray-600 mt-1">日期：{item.dueDate}</p>}
-        {item.note   && <p className="text-xs text-gray-600 mt-0.5">備註：{item.note}</p>}
+        {item.dueDate && (
+          <p className="text-xs text-gray-600 mt-1">
+            {isReceivable ? "預計收款日" : "付款期限"}：{item.dueDate}
+          </p>
+        )}
+        {item.note && <p className="text-xs text-gray-600 mt-0.5">備註：{item.note}</p>}
       </div>
       <div className="flex flex-col items-end gap-1">
         <span className={`text-sm font-medium tabular-nums ${
@@ -315,7 +319,11 @@ function FinanceEntryRow({ entry }: { entry: FinanceEntry }) {
         }`}>
           {isIncome ? "收入" : "支出"}
         </span>
-        {entry.date && <p className="text-xs text-gray-600 mt-1">日期：{entry.date}</p>}
+        {entry.date && (
+          <p className="text-xs text-gray-600 mt-1">
+            {isIncome ? "收入日期" : "支出日期"}：{entry.date}
+          </p>
+        )}
         {entry.note && <p className="text-xs text-gray-600 mt-0.5">備註：{entry.note}</p>}
       </div>
       <span className={`text-sm font-medium tabular-nums shrink-0 ${
@@ -503,10 +511,11 @@ export function EditPage({
 
   // Confirm flow state
   const todayStr = new Date().toISOString().substring(0, 10);
-  const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null);
-  const [confirmAmount,    setConfirmAmount]    = useState("");
-  const [confirmDate,      setConfirmDate]      = useState(todayStr);
-  const [confirmNote,      setConfirmNote]      = useState("");
+  const [confirmingItemId,  setConfirmingItemId]  = useState<string | null>(null);
+  const [confirmAmount,     setConfirmAmount]     = useState("");
+  const [confirmDate,       setConfirmDate]       = useState(todayStr);
+  const [confirmNote,       setConfirmNote]       = useState("");
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
 
   // ── Linked Finance Records ────────────────────────────────────────────────
   const [linkedFinance, setLinkedFinance] = useState<FinanceEntry[]>(() =>
@@ -566,12 +575,15 @@ export function EditPage({
   }
 
   function handleConfirmItem(item: FinancialItem) {
+    if (confirmSubmitting) return;
     if (linkedFinance.some(e => e.sourceFinancialItemId === item.id)) {
       setConfirmingItemId(null);
       return;
     }
     const amt = parseFloat(confirmAmount.replace(/,/g, ""));
     if (isNaN(amt) || amt <= 0) return;
+
+    setConfirmSubmitting(true);
 
     const now = new Date().toISOString();
     const confirmedDate = confirmDate || todayStr;
@@ -606,6 +618,7 @@ export function EditPage({
       financialDueDate: undefined,
     });
 
+    setConfirmSubmitting(false);
     setConfirmingItemId(null);
   }
 
@@ -959,13 +972,15 @@ export function EditPage({
                       </div>
                       <div className="flex gap-2 pt-1">
                         <button type="button" onClick={() => handleConfirmItem(fi)}
-                          disabled={!canConfirmAmt}
+                          disabled={!canConfirmAmt || confirmSubmitting}
                           className={`flex-1 py-2.5 rounded-xl text-white font-semibold text-sm transition-colors disabled:opacity-40 ${
                             fi.type === "receivable"
                               ? "bg-teal-600 hover:bg-teal-500"
                               : "bg-rose-600 hover:bg-rose-500"
                           }`}>
-                          {fi.type === "receivable" ? "確認已收款" : "確認已付款"}
+                          {confirmSubmitting
+                            ? "處理中…"
+                            : fi.type === "receivable" ? "確認已收款" : "確認已付款"}
                         </button>
                         <button type="button" onClick={() => setConfirmingItemId(null)}
                           className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 font-semibold text-sm">
@@ -978,10 +993,12 @@ export function EditPage({
               );
             })}
 
-            {/* ── FinanceEntries (Income/Expense) ── */}
-            {linkedFinance.map((entry) => (
-              <FinanceEntryRow key={entry.id} entry={entry} />
-            ))}
+            {/* ── FinanceEntries (Income/Expense 手動新增，排除由 confirm flow 產生者） ── */}
+            {linkedFinance
+              .filter((e) => !e.sourceFinancialItemId)
+              .map((entry) => (
+                <FinanceEntryRow key={entry.id} entry={entry} />
+              ))}
           </div>
 
           {/* Unified add form */}
