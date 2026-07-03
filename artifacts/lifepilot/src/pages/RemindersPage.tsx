@@ -230,8 +230,13 @@ function ReminderCard({
         {/* Meta row */}
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500 mb-1.5">
           {reminder.date && <span>{displayDate(reminder.date)}</span>}
-          {reminder.startTime && <span>{reminder.startTime}</span>}
-          {reminder.endTime && reminder.endTime !== reminder.startTime && <span>— {reminder.endTime}</span>}
+          {reminder.allDay && !reminder.startTime
+            ? <span className="text-blue-400/80">全天</span>
+            : <>
+                {reminder.startTime && <span>{reminder.startTime}</span>}
+                {reminder.endTime && reminder.endTime !== reminder.startTime && <span>— {reminder.endTime}</span>}
+              </>
+          }
           {reminder.location && <span>📍 {reminder.location}</span>}
         </div>
 

@@ -155,6 +155,7 @@ export function EditPage({
   const [date,      setDate]      = useState(normalizeDate(reminder.date));
   const [startTime, setStartTime] = useState(reminder.startTime);
   const [endTime,   setEndTime]   = useState(reminder.endTime);
+  const [allDay,    setAllDay]    = useState(reminder.allDay ?? !reminder.startTime);
   const [location,  setLocation]  = useState(reminder.location);
   const [notes,     setNotes]     = useState(reminder.notes);
   const [category,  setCategory]  = useState(reminder.category ?? "");
@@ -230,8 +231,9 @@ export function EditPage({
     onSave({
       title,
       date,
-      startTime,
-      endTime,
+      startTime: allDay ? "" : startTime,
+      endTime:   allDay ? "" : endTime,
+      allDay,
       location,
       notes,
       category,
@@ -336,11 +338,25 @@ export function EditPage({
           <FieldRow label="日期">
             <DateField value={date} onChange={setDate} />
           </FieldRow>
-          <FieldRow label="開始時間">
-            <TextInput value={startTime} onChange={setStartTime} placeholder="如 09:00" />
-          </FieldRow>
-          <FieldRow label="結束時間">
-            <TextInput value={endTime} onChange={setEndTime} placeholder="如 12:00" />
+          <FieldRow label="時間">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => { if (!allDay) { setStartTime(""); setEndTime(""); } setAllDay(!allDay); }}
+                className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
+                  allDay ? "bg-blue-500/20 text-blue-300 border-blue-500/40" : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
+                }`}
+              >
+                全天
+              </button>
+              {!allDay && (
+                <>
+                  <TextInput value={startTime} onChange={setStartTime} placeholder="09:00" />
+                  <span className="text-gray-500 text-xs shrink-0">—</span>
+                  <TextInput value={endTime} onChange={setEndTime} placeholder="12:00" />
+                </>
+              )}
+            </div>
           </FieldRow>
           <FieldRow label="地點">
             <TextInput value={location} onChange={setLocation} placeholder="地點（選填）" />
@@ -386,7 +402,18 @@ export function EditPage({
             <DateField value={date} onChange={setDate} />
           </FieldRow>
           <FieldRow label="接送時間">
-            <TextInput value={startTime} onChange={setStartTime} placeholder="如 14:30" />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => { if (!allDay) setStartTime(""); setAllDay(!allDay); }}
+                className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
+                  allDay ? "bg-blue-500/20 text-blue-300 border-blue-500/40" : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
+                }`}
+              >
+                全天
+              </button>
+              {!allDay && <TextInput value={startTime} onChange={setStartTime} placeholder="如 14:30" />}
+            </div>
           </FieldRow>
           <FieldRow label="地區">
             <TextInput value={district} onChange={setDistrict} placeholder="如 中山、松山機場" />
@@ -428,7 +455,18 @@ export function EditPage({
             <DateField value={date} onChange={setDate} />
           </FieldRow>
           <FieldRow label="看診時間">
-            <TextInput value={startTime} onChange={setStartTime} placeholder="如 14:00" />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => { if (!allDay) setStartTime(""); setAllDay(!allDay); }}
+                className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
+                  allDay ? "bg-blue-500/20 text-blue-300 border-blue-500/40" : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
+                }`}
+              >
+                全天
+              </button>
+              {!allDay && <TextInput value={startTime} onChange={setStartTime} placeholder="如 14:00" />}
+            </div>
           </FieldRow>
           <FieldRow label="備註">
             <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
@@ -572,7 +610,18 @@ export function EditPage({
           )}
           {!isPending && (
             <FieldRow label="時間">
-              <TextInput value={startTime} onChange={setStartTime} placeholder="如 09:00" />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { if (!allDay) { setStartTime(""); setEndTime(""); } setAllDay(!allDay); }}
+                  className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
+                    allDay ? "bg-blue-500/20 text-blue-300 border-blue-500/40" : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
+                  }`}
+                >
+                  全天
+                </button>
+                {!allDay && <TextInput value={startTime} onChange={setStartTime} placeholder="如 09:00" />}
+              </div>
             </FieldRow>
           )}
           {!isPending && (

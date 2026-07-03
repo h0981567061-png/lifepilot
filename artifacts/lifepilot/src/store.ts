@@ -51,6 +51,7 @@ export interface Reminder {
   date: string;
   startTime: string;
   endTime: string;
+  allDay?: boolean;
   location: string;
   notes: string;
   completed: boolean;

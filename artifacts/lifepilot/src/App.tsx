@@ -923,6 +923,7 @@ export default function App() {
         date: normalizeDate(e.date ?? ""),
         startTime: normalizeTime(e.startTime ?? ""),
         endTime: normalizeTime(e.endTime ?? ""),
+        allDay: !e.startTime,
         location: e.location ?? "",
         notes: e.notes ?? "",
         flightNumber: e.flightNumber ?? "",
