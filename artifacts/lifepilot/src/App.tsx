@@ -192,17 +192,76 @@ interface AirportTransfer {
 
 // A line "starts with a four-digit time" e.g. 2100, 2115, 0830
 const TRANSFER_HEADER_RE = /^\d{4}(\s|$)/;
-// Flight number: 1–2 uppercase letters + 2–5 digits, e.g. BR212, CI101
-const FLIGHT_RE = /^[A-Za-z]{1,2}\d{2,5}$/;
-// Price: a standalone 3–6 digit number
+// Flight number embedded anywhere: 1–2 letters + 2–5 digits (e.g. CI173, BR68, VN0578)
+const FLIGHT_EMBEDDED_RE = /[A-Za-z]{1,2}\d{2,5}/;
+// Price: a standalone 3–6 digit number token
 const PRICE_RE = /^\d{3,6}$/;
-// Vehicle keywords
-const VEHICLE_RE = /轎車|廂型|sedan|van|巴士|bus/i;
+// Vehicle keywords — includes seat-count codes common in TW dispatch messages
+const VEHICLE_RE =
+  /轎車|廂型|sedan|van|巴士|bus|正七|正五|小車|大車|七人座|九人座|豪華|商務/i;
 // Pickup / Dropoff keywords
 const TRANSFER_TYPE_RE = /接機|送機/;
 
 function isTransferHeader(line: string): boolean {
   return TRANSFER_HEADER_RE.test(line);
+}
+
+/**
+ * Classify a single atomic token extracted from a transfer record.
+ * A token is one space-delimited chunk from the header remainder or a body line.
+ * The `+` separator is handled by the caller before this function is reached.
+ */
+function classifyToken(
+  token: string,
+  state: {
+    flight: string; type: string; district: string;
+    vehicle: string; price: string; noteParts: string[];
+  }
+): void {
+  // ── Transfer type (接機 / 送機) — may be fused with flight, e.g. "接機CI173" ──
+  const typeMatch = token.match(TRANSFER_TYPE_RE);
+  if (typeMatch && !state.type) {
+    state.type = typeMatch[0];
+    // Check for an embedded flight in the same token after the type keyword
+    const remainder = token.replace(TRANSFER_TYPE_RE, "").trim();
+    if (remainder && FLIGHT_EMBEDDED_RE.test(remainder) && !state.flight) {
+      const fm = remainder.match(FLIGHT_EMBEDDED_RE);
+      if (fm) state.flight = fm[0].toUpperCase();
+    }
+    return;
+  }
+
+  // ── Standalone flight token (pure letter+digit, no Chinese) ──
+  if (!state.flight && FLIGHT_EMBEDDED_RE.test(token) && !/[\u4e00-\u9fff]/.test(token)) {
+    const fm = token.match(FLIGHT_EMBEDDED_RE);
+    if (fm) { state.flight = fm[0].toUpperCase(); return; }
+  }
+
+  // ── Vehicle keyword ──
+  if (!state.vehicle && VEHICLE_RE.test(token)) {
+    state.vehicle = token; return;
+  }
+
+  // ── Price: standalone digits ──
+  if (!state.price && PRICE_RE.test(token)) {
+    state.price = token; return;
+  }
+
+  // ── Notes label ──
+  if (/備註/.test(token)) {
+    state.noteParts.push(token.replace(/備註\s*[：:]\s*/, "").trim());
+    return;
+  }
+
+  // ── Chinese text → district first, then notes ──
+  if (/[\u4e00-\u9fff]/.test(token)) {
+    if (!state.district) { state.district = token; }
+    else { state.noteParts.push(token); }
+    return;
+  }
+
+  // ── Fallback ──
+  if (token) state.noteParts.push(token);
 }
 
 function parseAirportTransfers(text: string): AirportTransfer[] {
@@ -227,46 +286,41 @@ function parseAirportTransfers(text: string): AirportTransfer[] {
     .filter((b) => b.length > 0 && isTransferHeader(b[0]))
     .map((block, idx) => {
       const firstLine = block[0];
+      const time = firstLine.slice(0, 4);
       const headerRest = firstLine.slice(4).trim();
       const bodyLines = block.slice(1);
-      const allExtra = [...(headerRest ? [headerRest] : []), ...bodyLines];
 
-      const time = firstLine.slice(0, 4);
-      let flight = "";
-      let type = "";
-      let district = "";
-      let vehicle = "";
-      let price = "";
-      const noteParts: string[] = [];
+      // Build token list:
+      //   • Split header remainder by spaces → compact single-line tokens
+      //   • Each body line is also one token
+      const rawTokens: string[] = [
+        ...(headerRest ? headerRest.split(/\s+/).filter(Boolean) : []),
+        ...bodyLines.filter(Boolean),
+      ];
 
-      for (const line of allExtra) {
-        if (!flight && FLIGHT_RE.test(line)) {
-          flight = line.toUpperCase();
-        } else if (!type && TRANSFER_TYPE_RE.test(line)) {
-          const m = line.match(TRANSFER_TYPE_RE);
-          type = m ? m[0] : line;
-        } else if (!vehicle && VEHICLE_RE.test(line)) {
-          vehicle = line;
-        } else if (!price && PRICE_RE.test(line)) {
-          price = line;
-        } else if (/備註/.test(line)) {
-          noteParts.push(line.replace(/備註\s*[：:]\s*/, "").trim());
-        } else if (!district && /[\u4e00-\u9fff]/.test(line)) {
-          district = line;
-        } else {
-          noteParts.push(line);
+      const state = {
+        flight: "", type: "", district: "",
+        vehicle: "", price: "", noteParts: [] as string[],
+      };
+
+      for (const rawToken of rawTokens) {
+        // Split on "+" — used in TW dispatch to append accessory notes
+        // e.g. "桃園八德+兒童椅" → ["桃園八德", "兒童椅"]
+        const parts = rawToken.split("+").map((s) => s.trim()).filter(Boolean);
+        for (const part of parts) {
+          classifyToken(part, state);
         }
       }
 
       return {
         id: idx + 1,
         time,
-        flight,
-        type,
-        district,
-        vehicle,
-        price,
-        notes: noteParts.filter(Boolean).join("　").trim(),
+        flight:   state.flight,
+        type:     state.type,
+        district: state.district,
+        vehicle:  state.vehicle,
+        price:    state.price,
+        notes:    state.noteParts.filter(Boolean).join("　").trim(),
         selected: false,
       };
     });
@@ -767,7 +821,7 @@ function AirportTransferCard({
         <div className="flex flex-col gap-1">
           <Field label="地區" value={transfer.district} />
           <Field label="車型" value={transfer.vehicle} />
-          <Field label="費用" value={transfer.price ? `NT$ ${transfer.price}` : ""} />
+          <Field label="費用" value={transfer.price ? `${transfer.price} 元` : ""} />
           <Field label="備註" value={transfer.notes} />
         </div>
         {!transfer.district && !transfer.vehicle && !transfer.price && !transfer.notes && (
