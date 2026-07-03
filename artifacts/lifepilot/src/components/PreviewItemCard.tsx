@@ -8,7 +8,6 @@ import {
 } from "../previewTypes";
 import { normalizeDate, normalizeTime } from "../utils";
 import { ReminderEditor } from "./ReminderEditor";
-import { CategorySelect } from "./CategorySelect";
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
@@ -85,6 +84,30 @@ function TextInput({
   );
 }
 
+// ─── AllDay toggle + time inputs ────────────────────────────────────────────────
+
+function AllDayToggle({
+  allDay,
+  onToggle,
+}: {
+  allDay: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`px-2.5 py-1 rounded-full text-xs border transition-all shrink-0 ${
+        allDay
+          ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
+          : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
+      }`}
+    >
+      全天
+    </button>
+  );
+}
+
 // ─── Compact display area (non-editing mode) ───────────────────────────────────
 
 function ItemDisplay({ item }: { item: PreviewItem }) {
@@ -94,7 +117,8 @@ function ItemDisplay({ item }: { item: PreviewItem }) {
     case "Airport Transfer":
       if (item.transferType) meta.push(item.transferType);
       if (item.flightNumber) meta.push(item.flightNumber);
-      if (item.startTime) meta.push(normalizeTime(item.startTime));
+      if (item.allDay) meta.push("全天");
+      else if (item.startTime) meta.push(normalizeTime(item.startTime));
       if (item.district) meta.push(item.district);
       if (item.vehicleType) meta.push(item.vehicleType);
       if (item.price) meta.push(`${item.price} 元`);
@@ -106,20 +130,22 @@ function ItemDisplay({ item }: { item: PreviewItem }) {
     case "Income":
       if (item.amount) meta.push(`${item.amount} 元`);
       if (item.source) meta.push(item.source);
-      if (item.startTime) meta.push(item.startTime);
+      if (!item.allDay && item.startTime) meta.push(item.startTime);
       break;
     case "Expense":
       if (item.amount) meta.push(`${item.amount} 元`);
       if (item.merchant) meta.push(item.merchant);
-      if (item.startTime) meta.push(item.startTime);
+      if (!item.allDay && item.startTime) meta.push(item.startTime);
       break;
     case "Medical":
       if (item.hospital) meta.push(item.hospital);
       if (item.department) meta.push(item.department);
-      if (item.startTime) meta.push(item.startTime);
+      if (item.allDay) meta.push("全天");
+      else if (item.startTime) meta.push(item.startTime);
       break;
     default:
-      if (item.startTime) meta.push(item.startTime);
+      if (item.allDay) meta.push("全天");
+      else if (item.startTime) meta.push(item.startTime);
       if (item.location) meta.push(item.location);
   }
 
@@ -170,12 +196,6 @@ function ItemDisplay({ item }: { item: PreviewItem }) {
             {m}
           </span>
         ))}
-
-        {item.category && (
-          <span className="text-[11px] bg-white/5 border border-white/10 text-gray-500 px-1.5 py-0.5 rounded-full">
-            {item.category}
-          </span>
-        )}
       </div>
     </>
   );
@@ -421,17 +441,14 @@ export function PreviewItemCard({
     onEdit();
   };
 
-  const showTimeFields = !["Payment", "Shopping"].includes(item.type);
-  const showEndTime = ["Course", "Work", "Family", "General"].includes(
-    draft.type
-  );
-  const showLocation = ![
-    "Income",
-    "Expense",
-    "Payment",
-    "Medical",
-    "Airport Transfer",
-  ].includes(draft.type);
+  const showTimeFields = !["Payment", "Shopping"].includes(draft.type);
+  const showEndTime   = ["Course", "Work", "Family", "General"].includes(draft.type);
+  const showLocation  = !["Income", "Expense", "Payment", "Medical", "Airport Transfer"].includes(draft.type);
+
+  function handleAllDayToggle() {
+    const next = !draft.allDay;
+    upd({ allDay: next, startTime: next ? "" : draft.startTime, endTime: next ? "" : draft.endTime });
+  }
 
   // ── Display mode ────────────────────────────────────────────────────────────
   if (!isEditing) {
@@ -489,16 +506,6 @@ export function PreviewItemCard({
           </select>
         </FormRow>
 
-        {/* Category selector */}
-        <FormRow label="我的分類">
-          <CategorySelect
-            type={draft.type}
-            value={draft.category}
-            onChange={(v) => upd({ category: v })}
-            compact
-          />
-        </FormRow>
-
         {/* Title (hidden for Airport Transfer since it derives title from transferType+flight) */}
         {draft.type !== "Airport Transfer" && (
           <FormRow label="標題">
@@ -523,25 +530,33 @@ export function PreviewItemCard({
           </FormRow>
         )}
 
-        {/* Time (not for Payment, Shopping) */}
+        {/* Time — full-day toggle + optional start/end inputs */}
         {showTimeFields && (
           <FormRow label="時間">
-            <div className="flex gap-2">
-              <input
-                type="time"
-                value={draft.startTime}
-                onChange={(e) => upd({ startTime: e.target.value })}
-                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
-                style={{ colorScheme: "dark" }}
-              />
-              {showEndTime && (
-                <input
-                  type="time"
-                  value={draft.endTime}
-                  onChange={(e) => upd({ endTime: e.target.value })}
-                  className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
-                  style={{ colorScheme: "dark" }}
-                />
+            <div className="flex items-center gap-2 flex-wrap">
+              <AllDayToggle allDay={draft.allDay} onToggle={handleAllDayToggle} />
+              {!draft.allDay && (
+                <>
+                  <input
+                    type="text"
+                    value={draft.startTime}
+                    onChange={(e) => upd({ startTime: e.target.value })}
+                    placeholder="09:00"
+                    className="w-24 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
+                  />
+                  {showEndTime && (
+                    <>
+                      <span className="text-gray-500 text-xs shrink-0">—</span>
+                      <input
+                        type="text"
+                        value={draft.endTime}
+                        onChange={(e) => upd({ endTime: e.target.value })}
+                        placeholder="12:00"
+                        className="w-24 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
+                      />
+                    </>
+                  )}
+                </>
               )}
             </div>
           </FormRow>
@@ -564,7 +579,7 @@ export function PreviewItemCard({
             reminders={draft.reminders ?? []}
             onChange={(updated) => upd({ reminders: updated })}
             hasDate={draft.type === "Payment" ? !!draft.dueDate : !!draft.date}
-            hasTime={showTimeFields ? !!draft.startTime : false}
+            hasTime={showTimeFields ? !draft.allDay && !!draft.startTime : false}
           />
         </FormRow>
 

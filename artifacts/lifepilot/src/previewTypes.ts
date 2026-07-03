@@ -90,6 +90,7 @@ export interface PreviewItem {
   date: string;       // YYYY-MM-DD; for Payment this doubles as dueDate
   startTime: string;  // HH:MM
   endTime: string;    // HH:MM
+  allDay: boolean;
   location: string;
   notes: string;
   // Airport Transfer
@@ -142,6 +143,7 @@ export function emptyPreviewItem(type: AllType = "General"): PreviewItem {
     source: "",
     merchant: "",
     pendingText: "",
+    allDay: false,
     reminders: [],
   };
 }
