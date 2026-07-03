@@ -15,7 +15,8 @@ export interface FinanceEntry {
   note?: string;
   createdAt: string;       // ISO 8601
   updatedAt: string;       // ISO 8601
-  sourceReminderId?: string; // reserved: link to Reminder in a future task
+  sourceReminderId?: string;        // link back to a Reminder
+  sourceFinancialItemId?: string;   // link to the specific FinancialItem that triggered this entry
 }
 
 // ─── Storage ──────────────────────────────────────────────────────────────────

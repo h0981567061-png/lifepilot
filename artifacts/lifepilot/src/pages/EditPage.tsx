@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Reminder, ReminderNotification, FinancialItem } from "../store";
+import { updateReminder } from "../store";
 import { normalizeDate } from "../utils";
 import { TYPE_LABEL, type AllType } from "../previewTypes";
 import { ReminderEditor } from "../components/ReminderEditor";
@@ -326,19 +327,70 @@ function ItemForm({
 // ─── FinancialItemRow ─────────────────────────────────────────────────────────
 
 function FinancialItemRow({
-  item, onEdit, onDelete,
+  item, isCompleted, isConfirming, onStartConfirm, onEdit, onDelete,
 }: {
   item: FinancialItem;
+  isCompleted: boolean;
+  isConfirming: boolean;
+  onStartConfirm: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const isReceivable = item.type === "receivable";
+
+  if (isCompleted) {
+    // Completed display
+    return (
+      <div className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0 opacity-70">
+        {/* Completed checkmark */}
+        <div className={`w-4 h-4 rounded-full shrink-0 flex items-center justify-center ${
+          isReceivable ? "bg-teal-500" : "bg-rose-400"
+        }`}>
+          <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 10" fill="none">
+            <path d="M2 5l2.5 2.5 3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
+              isReceivable
+                ? "bg-teal-500/10 text-teal-400/80 border-teal-500/20"
+                : "bg-rose-500/10 text-rose-300/80 border-rose-500/20"
+            }`}>
+              {isReceivable ? "✓ 已收" : "✓ 已付"}
+            </span>
+            <span className="text-sm text-gray-400 line-through">{item.title}</span>
+          </div>
+          {item.completedDate && (
+            <p className="text-xs text-gray-600 mt-0.5">
+              {isReceivable ? "收款日期" : "付款日期"}：{item.completedDate}
+            </p>
+          )}
+        </div>
+        <span className={`text-sm font-medium tabular-nums shrink-0 ${
+          isReceivable ? "text-teal-400/70" : "text-rose-400/70"
+        }`}>
+          {isReceivable ? "+" : "−"} {fmtCurrency(item.amount)}
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0 group">
-      {/* Status indicator (decorative — confirmed later) */}
-      <div className={`w-4 h-4 rounded-full border-2 shrink-0 ${
-        isReceivable ? "border-teal-500/60" : "border-rose-400/60"
-      }`} title="款項確認功能將於下一版加入" />
+    <div className={`flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0 group ${
+      isConfirming ? "border-blue-500/20" : ""
+    }`}>
+      {/* Interactive circle — click to start confirm flow */}
+      <button
+        type="button"
+        onClick={onStartConfirm}
+        title={isReceivable ? "點擊確認收款" : "點擊確認付款"}
+        className={`w-4 h-4 rounded-full border-2 shrink-0 transition-all hover:scale-110 active:scale-95 ${
+          isReceivable
+            ? "border-teal-500/60 hover:border-teal-400 hover:bg-teal-500/10"
+            : "border-rose-400/60 hover:border-rose-300 hover:bg-rose-500/10"
+        }`}
+      />
       {/* Badge + name + amount */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
@@ -361,7 +413,7 @@ function FinancialItemRow({
       }`}>
         {fmtCurrency(item.amount)}
       </span>
-      {/* Actions */}
+      {/* Edit / Delete — hover only */}
       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
         <button
           type="button"
@@ -453,6 +505,13 @@ export function EditPage({
   const [editFormDate,   setEditFormDate]   = useState("");
   const [editFormNote,   setEditFormNote]   = useState("");
 
+  // ── Confirm flow state (待收/待付 → 建立真實 Finance Record) ─────────────
+  const todayStr = new Date().toISOString().substring(0, 10);
+  const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null);
+  const [confirmAmount,    setConfirmAmount]    = useState("");
+  const [confirmDate,      setConfirmDate]      = useState(todayStr);
+  const [confirmNote,      setConfirmNote]      = useState("");
+
   // ── Linked Finance Records (real Income/Expense entries) ──────────────────
   const [linkedFinance, setLinkedFinance] = useState<FinanceEntry[]>(() =>
     loadFinanceEntries().filter((e) => e.sourceReminderId === reminder.id)
@@ -526,6 +585,68 @@ export function EditPage({
   function handleDeleteItem(id: string) {
     if (!window.confirm("確定要刪除這筆款項？")) return;
     setFinancialItems((p) => p.filter((i) => i.id !== id));
+    if (confirmingItemId === id) setConfirmingItemId(null);
+  }
+
+  // ── Confirm flow (待收/待付 → Income/Expense) ─────────────────────────────
+
+  function handleStartConfirm(item: FinancialItem) {
+    setConfirmingItemId(item.id);
+    setConfirmAmount(String(item.amount));
+    setConfirmDate(todayStr);
+    setConfirmNote(item.note ?? "");
+    // Close any other panels
+    setEditingItemId(null);
+    setShowAddItemForm(false);
+  }
+
+  function handleConfirmItem(item: FinancialItem) {
+    // Guard: already completed via Finance Record (belt-and-suspenders)
+    if (linkedFinance.some(e => e.sourceFinancialItemId === item.id)) {
+      setConfirmingItemId(null);
+      return;
+    }
+    const amt = parseFloat(confirmAmount.replace(/,/g, ""));
+    if (isNaN(amt) || amt <= 0) return;
+
+    const now = new Date().toISOString();
+    const confirmedDate = confirmDate || todayStr;
+
+    // 1. Build Finance Record
+    const entry: FinanceEntry = {
+      id: crypto.randomUUID(),
+      type: item.type === "receivable" ? "Income" : "Expense",
+      title: item.title,
+      amount: amt,
+      date: confirmedDate,
+      financialCategory: item.type === "receivable" ? "接送收入" : "",
+      note: confirmNote.trim() || undefined,
+      createdAt: now,
+      updatedAt: now,
+      sourceReminderId: reminder.id,
+      sourceFinancialItemId: item.id,
+    };
+    saveFinanceEntries([...loadFinanceEntries(), entry]);
+    setLinkedFinance((p) => [...p, entry]);
+
+    // 2. Mark Financial Item completed
+    const updatedItems = financialItems.map((i) =>
+      i.id === item.id
+        ? { ...i, completed: true, completedDate: confirmedDate }
+        : i
+    );
+    setFinancialItems(updatedItems);
+
+    // 3. Persist immediately to Reminder in localStorage
+    //    (prevents re-creation even if user doesn't click main 儲存)
+    updateReminder(reminder.id, {
+      financialItems: updatedItems,
+      financialStatus: undefined,
+      expectedAmount:  undefined,
+      financialDueDate: undefined,
+    });
+
+    setConfirmingItemId(null);
   }
 
   // ── Finance Record handlers ────────────────────────────────────────────────
@@ -821,36 +942,123 @@ export function EditPage({
           )}
 
           <div className="space-y-px">
-            {financialItems.map((fi) =>
-              editingItemId === fi.id ? (
-                <div key={fi.id} className="mb-2">
-                  <ItemForm
-                    type={editFormType}   title={editFormTitle}
-                    amount={editFormAmount} dueDate={editFormDate} note={editFormNote}
-                    setType={setEditFormType}   setTitle={setEditFormTitle}
-                    setAmount={setEditFormAmount} setDueDate={setEditFormDate} setNote={setEditFormNote}
-                    onSave={handleSaveEditItem}
-                    onCancel={() => setEditingItemId(null)}
-                    saveLabel="儲存"
+            {financialItems.map((fi) => {
+              // An item is "completed" if flag is set OR a Finance Record already links to it
+              const isItemCompleted =
+                fi.completed === true ||
+                linkedFinance.some(e => e.sourceFinancialItemId === fi.id);
+
+              if (editingItemId === fi.id) {
+                return (
+                  <div key={fi.id} className="mb-2">
+                    <ItemForm
+                      type={editFormType}    title={editFormTitle}
+                      amount={editFormAmount} dueDate={editFormDate} note={editFormNote}
+                      setType={setEditFormType}    setTitle={setEditFormTitle}
+                      setAmount={setEditFormAmount} setDueDate={setEditFormDate} setNote={setEditFormNote}
+                      onSave={handleSaveEditItem}
+                      onCancel={() => setEditingItemId(null)}
+                      saveLabel="儲存"
+                    />
+                  </div>
+                );
+              }
+
+              const isConf = confirmingItemId === fi.id;
+              const canConfirmAmt = parseFloat(confirmAmount.replace(/,/g, "")) > 0;
+
+              return (
+                <div key={fi.id}>
+                  <FinancialItemRow
+                    item={fi}
+                    isCompleted={isItemCompleted}
+                    isConfirming={isConf}
+                    onStartConfirm={() => !isItemCompleted && handleStartConfirm(fi)}
+                    onEdit={() => handleStartEditItem(fi)}
+                    onDelete={() => handleDeleteItem(fi.id)}
                   />
+
+                  {/* Inline confirm form — expands below the row */}
+                  {isConf && (
+                    <div className="ml-7 mb-3 rounded-xl bg-white/[0.04] border border-white/10 p-4 space-y-3">
+                      <p className="text-xs text-gray-300 font-semibold">
+                        {fi.type === "receivable" ? "確認收款" : "確認付款"}
+                      </p>
+                      {/* Amount */}
+                      <div>
+                        <p className="text-[10px] text-gray-500 mb-1.5">
+                          {fi.type === "receivable" ? "實收金額" : "實付金額"}
+                        </p>
+                        <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5">
+                          <span className="text-gray-500 text-sm shrink-0">NT$</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={confirmAmount}
+                            onChange={(e) => setConfirmAmount(e.target.value)}
+                            className="flex-1 bg-transparent text-white text-base font-semibold focus:outline-none placeholder-gray-700"
+                          />
+                        </div>
+                      </div>
+                      {/* Date */}
+                      <div>
+                        <p className="text-[10px] text-gray-500 mb-1.5">
+                          {fi.type === "receivable" ? "收款日期" : "付款日期"}
+                        </p>
+                        <input
+                          type="date"
+                          value={confirmDate}
+                          onChange={(e) => setConfirmDate(e.target.value)}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
+                          style={{ colorScheme: "dark" }}
+                        />
+                      </div>
+                      {/* Note */}
+                      <div>
+                        <p className="text-[10px] text-gray-500 mb-1.5">備註</p>
+                        <input
+                          type="text"
+                          value={confirmNote}
+                          onChange={(e) => setConfirmNote(e.target.value)}
+                          placeholder="備註（選填）"
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none"
+                        />
+                      </div>
+                      {/* Buttons */}
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmItem(fi)}
+                          disabled={!canConfirmAmt}
+                          className={`flex-1 py-2.5 rounded-xl text-white font-semibold text-sm transition-colors disabled:opacity-40 ${
+                            fi.type === "receivable"
+                              ? "bg-teal-600 hover:bg-teal-500"
+                              : "bg-rose-600 hover:bg-rose-500"
+                          }`}
+                        >
+                          {fi.type === "receivable" ? "確認已收款" : "確認已付款"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingItemId(null)}
+                          className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 font-semibold text-sm"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <FinancialItemRow
-                  key={fi.id}
-                  item={fi}
-                  onEdit={() => handleStartEditItem(fi)}
-                  onDelete={() => handleDeleteItem(fi.id)}
-                />
-              )
-            )}
+              );
+            })}
           </div>
 
           {/* Add item form */}
-          {showAddItemForm && !editingItemId && (
+          {showAddItemForm && !editingItemId && !confirmingItemId && (
             <ItemForm
-              type={itemFormType}   title={itemFormTitle}
+              type={itemFormType}    title={itemFormTitle}
               amount={itemFormAmount} dueDate={itemFormDate} note={itemFormNote}
-              setType={setItemFormType}   setTitle={setItemFormTitle}
+              setType={setItemFormType}    setTitle={setItemFormTitle}
               setAmount={setItemFormAmount} setDueDate={setItemFormDate} setNote={setItemFormNote}
               onSave={handleAddItem}
               onCancel={() => { setShowAddItemForm(false); resetAddForm(); }}
@@ -858,7 +1066,7 @@ export function EditPage({
           )}
 
           {/* ＋ 新增款項 */}
-          {!showAddItemForm && !editingItemId && (
+          {!showAddItemForm && !editingItemId && !confirmingItemId && (
             <button
               type="button"
               onClick={() => setShowAddItemForm(true)}
