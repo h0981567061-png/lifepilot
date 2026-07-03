@@ -18,6 +18,11 @@ import { MyPage }                  from "./pages/MyPage";
 import { EditPage }                from "./pages/EditPage";
 import { CategoryManagementPage }  from "./pages/CategoryManagementPage";
 import { CategoryProvider }        from "./CategoryContext";
+import {
+  loadFinanceEntries,
+  saveFinanceEntries,
+  type FinanceEntry,
+} from "./financeStore";
 
 // ─── Course parser types & helpers ───────────────────────────────────────────
 
@@ -1360,6 +1365,30 @@ export default function App() {
           onDelete={handleDeleteReminder}
           onToggleComplete={handleToggleReminderComplete}
           onEdit={handleOpenEdit}
+          onQuickFinance={(reminderId, type, amountStr) => {
+            const source = savedReminders.find((r) => r.id === reminderId);
+            if (!source) return;
+            const amount = parseFloat(amountStr.replace(/,/g, ""));
+            if (isNaN(amount) || amount <= 0) return;
+            const now = new Date().toISOString();
+            const entry: FinanceEntry = {
+              id: crypto.randomUUID(),
+              type,
+              title: source.title || (type === "Income" ? "收入" : "支出"),
+              amount,
+              date: source.date || now.substring(0, 10),
+              financialCategory: "",
+              myCategory: source.category || undefined,
+              source: type === "Income" ? (source.source ?? undefined) : undefined,
+              merchant: type === "Expense" ? (source.merchant ?? undefined) : undefined,
+              note: undefined,
+              createdAt: now,
+              updatedAt: now,
+              sourceReminderId: reminderId,
+            };
+            const prev = loadFinanceEntries();
+            saveFinanceEntries([...prev, entry]);
+          }}
         />
       )}
       {activePage === "finance" && (
