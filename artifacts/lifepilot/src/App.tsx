@@ -18,20 +18,65 @@ interface ReminderItem {
   sourceEventId: number;
   title: string;
   notes: string;
-  dueDate: Date | null;       // event date + start time
-  reminderDate: Date | null;  // 1 h before dueDate; or 09:00 when no time given
+  dueDate: Date | null;
+  reminderDate: Date | null;
   isCompleted: boolean;
 }
+
+// ─── Apple Calendar data structure ───────────────────────────────────────────
+
+interface CalendarItem {
+  sourceEventId: number;
+  title: string;
+  startDate: Date | null;
+  endDate: Date | null;
+  location: string;
+  notes: string;
+}
+
+// ─── Medical / Shopping / Payment / Pending types ────────────────────────────
+
+interface MedicalItem {
+  id: number;
+  date: string;
+  time: string;
+  hospital: string;
+  department: string;
+  notes: string;
+  selected: boolean;
+}
+
+interface ShoppingItem {
+  id: number;
+  lines: string[];
+  amount: string;
+  selected: boolean;
+}
+
+interface PaymentItem {
+  id: number;
+  name: string;
+  dueDate: string;
+  amount: string;
+  account: string;
+  notes: string;
+  selected: boolean;
+}
+
+interface PendingItem {
+  id: number;
+  text: string;
+  selected: boolean;
+}
+
+// ─── Course parser ────────────────────────────────────────────────────────────
 
 // Date pattern: 7/30  |  7/21  |  7/20-7/24  |  7/20-24
 const DATE_RE = /\d{1,2}\/\d{1,2}(?:[-–~～]\d{1,2}(?:\/\d{1,2})?)?/;
 
 function isEventHeader(line: string): boolean {
-  // Must contain a date pattern
   const m = line.match(DATE_RE);
   if (!m) return false;
-  // The text BEFORE the date must contain at least one Chinese character or letter
-  // This ensures "美術班 7/30" qualifies but a bare "7/30" line does not
   const beforeDate = line.slice(0, m.index).trim();
   return /[\u4e00-\u9fff\w]/.test(beforeDate);
 }
@@ -78,14 +123,11 @@ function parseEvents(text: string): Event[] {
 
   for (const line of rawLines) {
     if (line === "") {
-      // Rule 1: blank line → flush current block and start fresh
       if (current.length > 0) {
         blocks.push(current);
         current = [];
       }
     } else if (isEventHeader(line) && current.length > 0) {
-      // Rule 2: date-header line while a block is already open → also split
-      // (handles no-blank-line inputs where events run together)
       blocks.push(current);
       current = [line];
     } else {
@@ -100,7 +142,6 @@ function parseEvents(text: string): Event[] {
       const firstLine = block[0];
       const bodyLines = block.slice(1);
 
-      // Date: check first line, then scan body lines as fallback
       let date = extractDate(firstLine);
       if (!date) {
         for (const line of bodyLines) {
@@ -109,7 +150,6 @@ function parseEvents(text: string): Event[] {
         }
       }
 
-      // Title: first line with date stripped out
       const title = extractTitle(firstLine, date) || "（無標題）";
 
       let time = "";
@@ -136,7 +176,7 @@ function parseEvents(text: string): Event[] {
     });
 }
 
-// ─── Airport Transfer parser types & helpers ──────────────────────────────────
+// ─── Airport Transfer parser ──────────────────────────────────────────────────
 
 interface AirportTransfer {
   id: number;
@@ -152,7 +192,7 @@ interface AirportTransfer {
 
 // A line "starts with a four-digit time" e.g. 2100, 2115, 0830
 const TRANSFER_HEADER_RE = /^\d{4}(\s|$)/;
-// Flight number: 1–2 uppercase letters + 2–5 digits, e.g. BR212, CI101, CX456
+// Flight number: 1–2 uppercase letters + 2–5 digits, e.g. BR212, CI101
 const FLIGHT_RE = /^[A-Za-z]{1,2}\d{2,5}$/;
 // Price: a standalone 3–6 digit number
 const PRICE_RE = /^\d{3,6}$/;
@@ -187,10 +227,8 @@ function parseAirportTransfers(text: string): AirportTransfer[] {
     .filter((b) => b.length > 0 && isTransferHeader(b[0]))
     .map((block, idx) => {
       const firstLine = block[0];
-      // Everything after the 4-digit time on the header line
       const headerRest = firstLine.slice(4).trim();
       const bodyLines = block.slice(1);
-      // All content lines (header remainder + body)
       const allExtra = [...(headerRest ? [headerRest] : []), ...bodyLines];
 
       const time = firstLine.slice(0, 4);
@@ -214,7 +252,6 @@ function parseAirportTransfers(text: string): AirportTransfer[] {
         } else if (/備註/.test(line)) {
           noteParts.push(line.replace(/備註\s*[：:]\s*/, "").trim());
         } else if (!district && /[\u4e00-\u9fff]/.test(line)) {
-          // First Chinese-character line not matched above → district
           district = line;
         } else {
           noteParts.push(line);
@@ -230,16 +267,118 @@ function parseAirportTransfers(text: string): AirportTransfer[] {
         vehicle,
         price,
         notes: noteParts.filter(Boolean).join("　").trim(),
+        selected: false,
       };
     });
 }
 
-// ─── Parser auto-detection ────────────────────────────────────────────────────
+// ─── Medical parser ───────────────────────────────────────────────────────────
 
-function detectParserType(text: string): "airport" | "course" {
-  const lines = text.split("\n").map((l) => l.trim());
-  if (lines.some((l) => TRANSFER_HEADER_RE.test(l))) return "airport";
-  return "course";
+const HOSPITAL_NAME_RE =
+  /醫院|診所|榮總|長庚|台大|成大|北榮|中榮|高榮|林口|新光|國泰|慈濟|馬偕|衛生所|聯合醫院/;
+const DEPARTMENT_NAME_RE =
+  /骨科|內科|外科|眼科|耳鼻喉|皮膚科|牙科|精神科|婦產科|兒科|泌尿科|心臟科|神經科|腫瘤科|放射科|復健科|急診|家醫科|一般科|感染科|風濕科|肝膽科|腸胃科|胸腔科|血液科|過敏科|免疫科/;
+
+function parseMedical(text: string): MedicalItem[] {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+
+  let date = "";
+  let time = "";
+  let hospital = "";
+  let department = "";
+  const noteLines: string[] = [];
+
+  for (const line of lines) {
+    if (!date) {
+      const d = extractDate(line);
+      if (d) { date = d; continue; }
+    }
+    // Time: try full extractTime first, then standalone HH:MM or N點 patterns
+    if (!time) {
+      const t = extractTime(line);
+      if (t) { time = t; continue; }
+      if (/^\d{1,2}:\d{2}$/.test(line)) { time = line; continue; }
+      if (/^\d{1,2}[點点]$/.test(line)) { time = line; continue; }
+    }
+    if (!hospital && HOSPITAL_NAME_RE.test(line)) { hospital = line; continue; }
+    if (!department && DEPARTMENT_NAME_RE.test(line)) { department = line; continue; }
+    noteLines.push(line);
+  }
+
+  return [{
+    id: 1, date, time, hospital, department,
+    notes: noteLines.join("\n"), selected: true,
+  }];
+}
+
+// ─── Shopping parser ──────────────────────────────────────────────────────────
+
+function parseShopping(text: string): ShoppingItem[] {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+
+  let amount = "";
+  const itemLines: string[] = [];
+
+  for (const line of lines) {
+    const amtMatch = line.match(
+      /NT\$?\s*[\d,]+|NTD\s*[\d,]+|總計\s*[：:]?\s*[\d,]+|合計\s*[：:]?\s*[\d,]+/
+    );
+    if (amtMatch && !amount) {
+      amount = amtMatch[0];
+    } else {
+      itemLines.push(line);
+    }
+  }
+
+  return [{ id: 1, lines: itemLines, amount, selected: true }];
+}
+
+// ─── Payment parser ───────────────────────────────────────────────────────────
+
+function parsePayment(text: string): PaymentItem[] {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+
+  let name = "";
+  let dueDate = "";
+  let amount = "";
+  let account = "";
+  const noteLines: string[] = [];
+
+  for (const line of lines) {
+    if (!account && (/帳號|戶名|匯入/.test(line) || /\d{10,}/.test(line))) {
+      account = line; continue;
+    }
+    if (!amount && /NT\$|NTD|金額|元整|\d+元/.test(line)) {
+      amount = line; continue;
+    }
+    if (!dueDate && DATE_RE.test(line) && /截止|繳費|到期|期限/.test(line)) {
+      const d = extractDate(line);
+      dueDate = d || line; continue;
+    }
+    if (!dueDate && /^\d{1,2}\/\d{1,2}/.test(line)) {
+      dueDate = line; continue;
+    }
+    if (!name && /[\u4e00-\u9fff]/.test(line)) {
+      name = line; continue;
+    }
+    noteLines.push(line);
+  }
+
+  return [{
+    id: 1, name, dueDate, amount, account,
+    notes: noteLines.join("\n"), selected: true,
+  }];
+}
+
+// ─── Pending parser ───────────────────────────────────────────────────────────
+
+function parsePending(text: string): PendingItem[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  return [{ id: 1, text: trimmed, selected: true }];
 }
 
 // ─── Message type detection ───────────────────────────────────────────────────
@@ -256,7 +395,7 @@ interface DetectionResult {
   type: MessageTypeName;
   label: string;       // Traditional Chinese label
   confidence: number;  // 0–99
-  color: string;       // Tailwind accent class
+  color: string;       // Tailwind accent name
 }
 
 function detectMessageType(text: string): DetectionResult {
@@ -272,16 +411,12 @@ function detectMessageType(text: string): DetectionResult {
   };
 
   // ── Airport Transfer ──
-  // Strong signal: any line starts with 4-digit time
   scores["Airport Transfer"] += lines.filter((l) => TRANSFER_HEADER_RE.test(l)).length * 60;
-  // Supporting keywords
   scores["Airport Transfer"] +=
     (full.match(/接機|送機|班機|轎車|廂型|接送|機場|航班/g) ?? []).length * 15;
 
   // ── Course ──
-  // Strong signal: title + date pattern on same line
   scores["Course"] += lines.filter((l) => isEventHeader(l)).length * 30;
-  // Supporting keywords
   scores["Course"] +=
     (full.match(/時間.*?點|上課|課程|補習|教室|國小|國中|高中/g) ?? []).length * 10;
 
@@ -296,7 +431,7 @@ function detectMessageType(text: string): DetectionResult {
 
   // ── Medical ──
   scores["Medical"] +=
-    (full.match(/掛號|診所|醫院|看診|門診|醫師|醫生|回診|複診|藥局|處方|掛診/g) ?? []).length * 20;
+    (full.match(/掛號|診所|醫院|看診|門診|醫師|醫生|回診|複診|藥局|處方|掛診|榮總|長庚|台大/g) ?? []).length * 20;
 
   // ── Find winner ──
   const entries = Object.entries(scores);
@@ -309,7 +444,6 @@ function detectMessageType(text: string): DetectionResult {
     return { type: "Pending", label: "待分類", confidence: 0, color: "gray" };
   }
 
-  // Confidence: winner vs. rest (soft-max style, capped at 99)
   const restSum = entries.reduce((s, [, v]) => s + v, 0) - winScore;
   const confidence = Math.min(99, Math.round((winScore / (winScore + restSum + 20)) * 100));
 
@@ -324,9 +458,15 @@ function detectMessageType(text: string): DetectionResult {
   return { ...META[winner], confidence };
 }
 
-// ─── Apple Reminders builder ─────────────────────────────────────────────────
+// ─── detectParserType — thin wrapper that shares logic with detectMessageType ─
 
-/** Parse "7/30" or "7/20-7/24" → Date using the current year. */
+function detectParserType(text: string): MessageTypeName {
+  return detectMessageType(text).type;
+}
+
+// ─── Apple Reminders builder ──────────────────────────────────────────────────
+
+/** Parse "7/30" or "7/20-7/24" → Date (start) using the current year. */
 function parseEventDate(dateStr: string, timeStr: string): Date | null {
   if (!dateStr) return null;
   const datePart = dateStr.split(/[-–~～]/)[0].trim();
@@ -340,15 +480,68 @@ function parseEventDate(dateStr: string, timeStr: string): Date | null {
   let minute = 0;
 
   if (timeStr) {
-    // HH:MM format
     const colonMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
     if (colonMatch) {
       hour = parseInt(colonMatch[1]);
       minute = parseInt(colonMatch[2]);
     } else {
-      // Chinese 點 format: take first number before 點
       const dotMatch = timeStr.match(/(\d{1,2})[點点]/);
       if (dotMatch) hour = parseInt(dotMatch[1]);
+    }
+  }
+
+  return new Date(year, month - 1, day, hour, minute, 0, 0);
+}
+
+/** Parse end date + end time from a date/time string pair. */
+function parseEndDate(dateStr: string, timeStr: string): Date | null {
+  if (!dateStr) return null;
+
+  const year = new Date().getFullYear();
+  const dateParts = dateStr.split(/[-–~～]/);
+
+  let month: number;
+  let day: number;
+
+  if (dateParts.length >= 2) {
+    // Date range: 7/20-7/24 or 7/20-24
+    const endPart = dateParts[dateParts.length - 1].trim();
+    if (endPart.includes("/")) {
+      const [m, d] = endPart.split("/").map(Number);
+      month = m; day = d;
+    } else {
+      month = parseInt(dateParts[0].split("/")[0]);
+      day = parseInt(endPart);
+    }
+  } else {
+    const [m, d] = dateStr.split("/").map(Number);
+    month = m; day = d;
+  }
+
+  if (!month || !day) return null;
+
+  // End time: take the second number in a time range, else reuse start time
+  let hour = 0;
+  let minute = 0;
+
+  if (timeStr) {
+    const colonRange = timeStr.match(/\d{1,2}:\d{2}\s*[-–~～]\s*(\d{1,2}):(\d{2})/);
+    if (colonRange) {
+      hour = parseInt(colonRange[1]);
+      minute = parseInt(colonRange[2]);
+    } else {
+      const dotRange = timeStr.match(/\d{1,2}[點点]\s*[-–~～]\s*(\d{1,2})[點点]/);
+      if (dotRange) {
+        hour = parseInt(dotRange[1]);
+      } else {
+        // Single time → same as start time
+        const c = timeStr.match(/(\d{1,2}):(\d{2})/);
+        if (c) { hour = parseInt(c[1]); minute = parseInt(c[2]); }
+        else {
+          const d = timeStr.match(/(\d{1,2})[點点]/);
+          if (d) hour = parseInt(d[1]);
+        }
+      }
     }
   }
 
@@ -365,10 +558,8 @@ function buildReminderItems(events: Event[]): ReminderItem[] {
       let reminderDate: Date | null = null;
       if (dueDate) {
         if (e.time) {
-          // Remind 1 hour before the event start
           reminderDate = new Date(dueDate.getTime() - 60 * 60 * 1000);
         } else {
-          // No time given → remind at 09:00 on that day
           reminderDate = new Date(dueDate);
           reminderDate.setHours(9, 0, 0, 0);
         }
@@ -390,6 +581,27 @@ function buildReminderItems(events: Event[]): ReminderItem[] {
     });
 }
 
+/** Convert selected course events into Apple Calendar-ready data objects. */
+function buildCalendarItems(events: Event[]): CalendarItem[] {
+  return events
+    .filter((e) => e.keepInLifePilot)
+    .map((e) => {
+      const startDate = parseEventDate(e.date, e.time);
+      const endDate = parseEndDate(e.date, e.time);
+      const noteLines: string[] = [];
+      if (e.date) noteLines.push(`日期：${e.date}`);
+      if (e.time) noteLines.push(`時間：${e.time}`);
+      return {
+        sourceEventId: e.id,
+        title: e.title,
+        startDate,
+        endDate,
+        location: e.location,
+        notes: noteLines.join("\n"),
+      };
+    });
+}
+
 /** Format a Date for compact display, e.g. "7/30 09:00". */
 function formatReminderDate(d: Date | null): string {
   if (!d) return "—";
@@ -399,6 +611,52 @@ function formatReminderDate(d: Date | null): string {
   const m = String(d.getMinutes()).padStart(2, "0");
   const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0;
   return hasTime ? `${mo}/${da} ${h}:${m}` : `${mo}/${da}`;
+}
+
+// ─── Accent helper ────────────────────────────────────────────────────────────
+
+function accentText(color: string) {
+  return (
+    color === "amber"  ? "text-amber-300"   :
+    color === "blue"   ? "text-blue-400"    :
+    color === "purple" ? "text-purple-400"  :
+    color === "green"  ? "text-emerald-400" :
+    color === "rose"   ? "text-rose-400"    :
+    "text-gray-400"
+  );
+}
+
+function accentBg(color: string) {
+  return (
+    color === "amber"  ? "bg-amber-400"   :
+    color === "blue"   ? "bg-blue-400"    :
+    color === "purple" ? "bg-purple-400"  :
+    color === "green"  ? "bg-emerald-400" :
+    color === "rose"   ? "bg-rose-400"    :
+    "bg-gray-500"
+  );
+}
+
+function accentBorder(color: string) {
+  return (
+    color === "amber"  ? "border-amber-500/40 bg-amber-500/5"   :
+    color === "blue"   ? "border-blue-500/40 bg-blue-500/5"     :
+    color === "purple" ? "border-purple-500/40 bg-purple-500/5" :
+    color === "green"  ? "border-emerald-500/40 bg-emerald-500/5" :
+    color === "rose"   ? "border-rose-500/40 bg-rose-500/5"     :
+    "border-white/10 bg-white/5"
+  );
+}
+
+function accentCheckbox(color: string) {
+  return (
+    color === "amber"  ? "accent-amber-500"   :
+    color === "blue"   ? "accent-blue-500"    :
+    color === "purple" ? "accent-purple-500"  :
+    color === "green"  ? "accent-emerald-500" :
+    color === "rose"   ? "accent-rose-500"    :
+    "accent-gray-500"
+  );
 }
 
 // ─── Course card ──────────────────────────────────────────────────────────────
@@ -446,11 +704,15 @@ function EventCard({
 
 // ─── Airport Transfer card ────────────────────────────────────────────────────
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({ label, value, labelColor = "text-amber-400/70" }: {
+  label: string;
+  value: string;
+  labelColor?: string;
+}) {
   if (!value) return null;
   return (
     <div className="flex items-start gap-2 text-sm">
-      <span className="text-amber-400/70 shrink-0 w-14 text-right">{label}</span>
+      <span className={`${labelColor} shrink-0 w-14 text-right`}>{label}</span>
       <span className="text-gray-200">{value}</span>
     </div>
   );
@@ -487,7 +749,6 @@ function AirportTransferCard({
         className="mt-1 w-4 h-4 rounded accent-amber-500 cursor-pointer shrink-0"
       />
       <div className="flex-1 min-w-0">
-        {/* Header row: time + type badge + flight */}
         <div className="flex items-center gap-3 flex-wrap mb-2">
           <span className="text-xl font-bold text-amber-300 tracking-widest">
             {transfer.time.slice(0, 2)}:{transfer.time.slice(2)}
@@ -503,7 +764,6 @@ function AirportTransferCard({
             </span>
           )}
         </div>
-        {/* Detail fields */}
         <div className="flex flex-col gap-1">
           <Field label="地區" value={transfer.district} />
           <Field label="車型" value={transfer.vehicle} />
@@ -518,17 +778,203 @@ function AirportTransferCard({
   );
 }
 
+// ─── Medical card ─────────────────────────────────────────────────────────────
+
+function MedicalCard({
+  item,
+  onToggle,
+}: {
+  item: MedicalItem;
+  onToggle: (id: number) => void;
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-4 flex items-start gap-4 cursor-pointer transition-all duration-150 select-none ${
+        item.selected
+          ? "border-rose-500/40 bg-rose-500/5"
+          : "border-white/10 bg-white/5 opacity-50"
+      }`}
+      onClick={() => onToggle(item.id)}
+    >
+      <input
+        type="checkbox"
+        checked={item.selected}
+        onChange={() => onToggle(item.id)}
+        onClick={(e) => e.stopPropagation()}
+        className="mt-0.5 w-4 h-4 rounded accent-rose-500 cursor-pointer shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-white leading-snug mb-2">
+          {item.hospital || "醫療預約"}
+          {item.department && (
+            <span className="ml-2 text-sm font-normal text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+              {item.department}
+            </span>
+          )}
+        </p>
+        <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm">
+          <span className={item.date ? "text-gray-400" : "italic text-gray-600"}>
+            {item.date || "無日期"}
+          </span>
+          <span className={item.time ? "text-gray-400" : "italic text-gray-600"}>
+            {item.time || "無時間"}
+          </span>
+        </div>
+        {item.notes && (
+          <p className="mt-2 text-xs text-gray-500 whitespace-pre-line leading-relaxed">
+            {item.notes}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Shopping card ────────────────────────────────────────────────────────────
+
+function ShoppingCard({
+  item,
+  onToggle,
+}: {
+  item: ShoppingItem;
+  onToggle: (id: number) => void;
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-4 flex items-start gap-4 cursor-pointer transition-all duration-150 select-none ${
+        item.selected
+          ? "border-purple-500/40 bg-purple-500/5"
+          : "border-white/10 bg-white/5 opacity-50"
+      }`}
+      onClick={() => onToggle(item.id)}
+    >
+      <input
+        type="checkbox"
+        checked={item.selected}
+        onChange={() => onToggle(item.id)}
+        onClick={(e) => e.stopPropagation()}
+        className="mt-0.5 w-4 h-4 rounded accent-purple-500 cursor-pointer shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-white leading-snug mb-2">購物清單</p>
+        <ul className="text-sm text-gray-300 space-y-0.5 list-none">
+          {item.lines.map((l, i) => (
+            <li key={i} className="flex items-start gap-2">
+              <span className="text-purple-500/60 mt-0.5">·</span>
+              <span>{l}</span>
+            </li>
+          ))}
+        </ul>
+        {item.amount && (
+          <p className="mt-2 text-sm font-semibold text-purple-300">{item.amount}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Payment card ─────────────────────────────────────────────────────────────
+
+function PaymentCard({
+  item,
+  onToggle,
+}: {
+  item: PaymentItem;
+  onToggle: (id: number) => void;
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-4 flex items-start gap-4 cursor-pointer transition-all duration-150 select-none ${
+        item.selected
+          ? "border-emerald-500/40 bg-emerald-500/5"
+          : "border-white/10 bg-white/5 opacity-50"
+      }`}
+      onClick={() => onToggle(item.id)}
+    >
+      <input
+        type="checkbox"
+        checked={item.selected}
+        onChange={() => onToggle(item.id)}
+        onClick={(e) => e.stopPropagation()}
+        className="mt-0.5 w-4 h-4 rounded accent-emerald-500 cursor-pointer shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-white leading-snug mb-2">
+          {item.name || "付款提醒"}
+        </p>
+        <div className="flex flex-col gap-1">
+          <Field label="到期" value={item.dueDate}  labelColor="text-emerald-400/70" />
+          <Field label="金額" value={item.amount}   labelColor="text-emerald-400/70" />
+          <Field label="帳號" value={item.account}  labelColor="text-emerald-400/70" />
+          <Field label="備註" value={item.notes}    labelColor="text-emerald-400/70" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pending card ─────────────────────────────────────────────────────────────
+
+function PendingCard({
+  item,
+  onToggle,
+}: {
+  item: PendingItem;
+  onToggle: (id: number) => void;
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-4 flex items-start gap-4 cursor-pointer transition-all duration-150 select-none ${
+        item.selected
+          ? "border-white/20 bg-white/5"
+          : "border-white/10 bg-white/5 opacity-50"
+      }`}
+      onClick={() => onToggle(item.id)}
+    >
+      <input
+        type="checkbox"
+        checked={item.selected}
+        onChange={() => onToggle(item.id)}
+        onClick={(e) => e.stopPropagation()}
+        className="mt-0.5 w-4 h-4 rounded accent-gray-500 cursor-pointer shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-gray-400 leading-snug mb-2">待確認</p>
+        <p className="text-sm text-gray-500 whitespace-pre-line leading-relaxed">
+          {item.text}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [message, setMessage] = useState("");
   const [events, setEvents] = useState<Event[]>([]);
   const [transfers, setTransfers] = useState<AirportTransfer[]>([]);
-  const [parserType, setParserType] = useState<"course" | "airport">("course");
+  const [medicalItems, setMedicalItems] = useState<MedicalItem[]>([]);
+  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
+  const [paymentItems, setPaymentItems] = useState<PaymentItem[]>([]);
+  const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
+  const [parserType, setParserType] = useState<MessageTypeName>("Course");
   const [detectionResult, setDetectionResult] = useState<DetectionResult | null>(null);
   const [reminderItems, setReminderItems] = useState<ReminderItem[]>([]);
+  const [calendarItems, setCalendarItems] = useState<CalendarItem[]>([]);
   const [analyzed, setAnalyzed] = useState(false);
   const [error, setError] = useState("");
+
+  function resetParsed() {
+    setEvents([]);
+    setTransfers([]);
+    setMedicalItems([]);
+    setShoppingItems([]);
+    setPaymentItems([]);
+    setPendingItems([]);
+    setReminderItems([]);
+    setCalendarItems([]);
+  }
 
   function handleAnalyze() {
     const trimmed = message.trim();
@@ -537,64 +983,118 @@ export default function App() {
       return;
     }
     setError("");
-    setReminderItems([]);
-    setDetectionResult(detectMessageType(trimmed));
-    const type = detectParserType(trimmed);
-    setParserType(type);
-    if (type === "airport") {
-      setTransfers(parseAirportTransfers(trimmed).map((t) => ({ ...t, selected: true })));
-      setEvents([]);
-    } else {
-      setEvents(parseEvents(trimmed));
-      setTransfers([]);
+    resetParsed();
+
+    const detection = detectMessageType(trimmed);
+    setDetectionResult(detection);
+    setParserType(detection.type);
+
+    switch (detection.type) {
+      case "Airport Transfer":
+        setTransfers(parseAirportTransfers(trimmed).map((t) => ({ ...t, selected: true })));
+        break;
+      case "Course":
+        setEvents(parseEvents(trimmed));
+        break;
+      case "Medical":
+        setMedicalItems(parseMedical(trimmed));
+        break;
+      case "Shopping":
+        setShoppingItems(parseShopping(trimmed));
+        break;
+      case "Payment":
+        setPaymentItems(parsePayment(trimmed));
+        break;
+      case "Pending":
+      default:
+        setPendingItems(parsePending(trimmed));
+        break;
     }
+
     setAnalyzed(true);
   }
 
   function handleToggleEvent(id: number) {
-    setEvents((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, keepInLifePilot: !e.keepInLifePilot } : e))
-    );
+    setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, keepInLifePilot: !e.keepInLifePilot } : e)));
   }
-
   function handleToggleTransfer(id: number) {
-    setTransfers((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, selected: !t.selected } : t))
-    );
+    setTransfers((prev) => prev.map((t) => (t.id === id ? { ...t, selected: !t.selected } : t)));
+  }
+  function handleToggleMedical(id: number) {
+    setMedicalItems((prev) => prev.map((m) => (m.id === id ? { ...m, selected: !m.selected } : m)));
+  }
+  function handleToggleShopping(id: number) {
+    setShoppingItems((prev) => prev.map((s) => (s.id === id ? { ...s, selected: !s.selected } : s)));
+  }
+  function handleTogglePayment(id: number) {
+    setPaymentItems((prev) => prev.map((p) => (p.id === id ? { ...p, selected: !p.selected } : p)));
+  }
+  function handleTogglePending(id: number) {
+    setPendingItems((prev) => prev.map((p) => (p.id === id ? { ...p, selected: !p.selected } : p)));
   }
 
   function handleSelectAll() {
-    if (parserType === "airport") {
-      setTransfers((prev) => prev.map((t) => ({ ...t, selected: true })));
-    } else {
-      setEvents((prev) => prev.map((e) => ({ ...e, keepInLifePilot: true })));
+    switch (parserType) {
+      case "Airport Transfer": setTransfers((p) => p.map((t) => ({ ...t, selected: true }))); break;
+      case "Course":           setEvents((p) => p.map((e) => ({ ...e, keepInLifePilot: true }))); break;
+      case "Medical":          setMedicalItems((p) => p.map((m) => ({ ...m, selected: true }))); break;
+      case "Shopping":         setShoppingItems((p) => p.map((s) => ({ ...s, selected: true }))); break;
+      case "Payment":          setPaymentItems((p) => p.map((x) => ({ ...x, selected: true }))); break;
+      case "Pending":          setPendingItems((p) => p.map((x) => ({ ...x, selected: true }))); break;
     }
   }
 
   function handleClearAll() {
-    if (parserType === "airport") {
-      setTransfers((prev) => prev.map((t) => ({ ...t, selected: false })));
-    } else {
-      setEvents((prev) => prev.map((e) => ({ ...e, keepInLifePilot: false })));
+    switch (parserType) {
+      case "Airport Transfer": setTransfers((p) => p.map((t) => ({ ...t, selected: false }))); break;
+      case "Course":           setEvents((p) => p.map((e) => ({ ...e, keepInLifePilot: false }))); break;
+      case "Medical":          setMedicalItems((p) => p.map((m) => ({ ...m, selected: false }))); break;
+      case "Shopping":         setShoppingItems((p) => p.map((s) => ({ ...s, selected: false }))); break;
+      case "Payment":          setPaymentItems((p) => p.map((x) => ({ ...x, selected: false }))); break;
+      case "Pending":          setPendingItems((p) => p.map((x) => ({ ...x, selected: false }))); break;
     }
   }
 
   function handleCreate() {
-    if (parserType === "airport") {
-      const selected = transfers.filter((t) => t.selected);
-      alert(`已建立 ${selected.length} 筆接送機行程到 LifePilot。`);
+    if (parserType === "Course") {
+      setReminderItems(buildReminderItems(events));
+      setCalendarItems(buildCalendarItems(events));
+    } else if (parserType === "Airport Transfer") {
+      const n = transfers.filter((t) => t.selected).length;
+      alert(`已建立 ${n} 筆接送機行程到 LifePilot。`);
     } else {
-      // Build Apple Reminders-ready data for selected events
-      const items = buildReminderItems(events);
-      setReminderItems(items);
+      // For Medical / Shopping / Payment / Pending: just confirm
+      const label = detectionResult?.label ?? "項目";
+      alert(`已確認 1 筆${label}資料。`);
     }
   }
 
-  const totalCount = parserType === "airport" ? transfers.length : events.length;
-  const selectedCount =
-    parserType === "airport"
-      ? transfers.filter((t) => t.selected).length
-      : events.filter((e) => e.keepInLifePilot).length;
+  // ── Derived counts ──
+  const totalCount = (() => {
+    switch (parserType) {
+      case "Airport Transfer": return transfers.length;
+      case "Course":           return events.length;
+      case "Medical":          return medicalItems.length;
+      case "Shopping":         return shoppingItems.length;
+      case "Payment":          return paymentItems.length;
+      case "Pending":          return pendingItems.length;
+      default: return 0;
+    }
+  })();
+
+  const selectedCount = (() => {
+    switch (parserType) {
+      case "Airport Transfer": return transfers.filter((t) => t.selected).length;
+      case "Course":           return events.filter((e) => e.keepInLifePilot).length;
+      case "Medical":          return medicalItems.filter((m) => m.selected).length;
+      case "Shopping":         return shoppingItems.filter((s) => s.selected).length;
+      case "Payment":          return paymentItems.filter((p) => p.selected).length;
+      case "Pending":          return pendingItems.filter((p) => p.selected).length;
+      default: return 0;
+    }
+  })();
+
+  const accentColor = detectionResult?.color ?? "blue";
 
   const PLACEHOLDER = `美術班 7/30
 復旦國小
@@ -607,6 +1107,25 @@ export default function App() {
 桌球7/20-7/24
 平興國小
 （時間14點-17點）`;
+
+  // ── Labels per type ──
+  const typeLabel: Record<MessageTypeName, string> = {
+    "Airport Transfer": "筆接送機行程",
+    "Course":           "個課程活動",
+    "Medical":          "筆醫療預約",
+    "Shopping":         "張購物清單",
+    "Payment":          "筆付款提醒",
+    "Pending":          "筆待確認事項",
+  };
+
+  const emptyHint: Record<MessageTypeName, string> = {
+    "Airport Transfer": "未找到接送機行程，請確認每筆資料以四位數時間開頭（如：2100）",
+    "Course":           "未找到任何課程活動，請確認訊息不為空白",
+    "Medical":          "未找到醫療資訊，請確認訊息包含醫院或科別",
+    "Shopping":         "未找到購物清單內容",
+    "Payment":          "未找到付款資訊",
+    "Pending":          "無內容",
+  };
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
@@ -648,14 +1167,7 @@ export default function App() {
               <div className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-5 flex flex-col gap-3">
                 <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold">偵測類型</p>
                 <div className="flex items-center gap-3">
-                  <span className={`text-2xl font-bold ${
-                    detectionResult.color === "amber"  ? "text-amber-300"  :
-                    detectionResult.color === "blue"   ? "text-blue-400"   :
-                    detectionResult.color === "purple" ? "text-purple-400" :
-                    detectionResult.color === "green"  ? "text-emerald-400":
-                    detectionResult.color === "rose"   ? "text-rose-400"   :
-                    "text-gray-400"
-                  }`}>
+                  <span className={`text-2xl font-bold ${accentText(accentColor)}`}>
                     {detectionResult.label}
                   </span>
                   <span className="text-sm text-gray-500">({detectionResult.type})</span>
@@ -664,25 +1176,11 @@ export default function App() {
                 <div className="flex items-center gap-3">
                   <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        detectionResult.color === "amber"  ? "bg-amber-400"  :
-                        detectionResult.color === "blue"   ? "bg-blue-400"   :
-                        detectionResult.color === "purple" ? "bg-purple-400" :
-                        detectionResult.color === "green"  ? "bg-emerald-400":
-                        detectionResult.color === "rose"   ? "bg-rose-400"   :
-                        "bg-gray-500"
-                      }`}
+                      className={`h-full rounded-full transition-all duration-500 ${accentBg(accentColor)}`}
                       style={{ width: `${detectionResult.confidence}%` }}
                     />
                   </div>
-                  <span className={`text-lg font-bold tabular-nums ${
-                    detectionResult.color === "amber"  ? "text-amber-300"  :
-                    detectionResult.color === "blue"   ? "text-blue-400"   :
-                    detectionResult.color === "purple" ? "text-purple-400" :
-                    detectionResult.color === "green"  ? "text-emerald-400":
-                    detectionResult.color === "rose"   ? "text-rose-400"   :
-                    "text-gray-400"
-                  }`}>
+                  <span className={`text-lg font-bold tabular-nums ${accentText(accentColor)}`}>
                     {detectionResult.confidence}%
                   </span>
                 </div>
@@ -696,11 +1194,9 @@ export default function App() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h2 className="text-lg font-semibold text-white">
-                      AI 找到{" "}
-                      <span className={parserType === "airport" ? "text-amber-300" : "text-blue-400"}>
-                        {totalCount}
-                      </span>{" "}
-                      {parserType === "airport" ? "筆接送機行程" : "個活動"}
+                      找到{" "}
+                      <span className={accentText(accentColor)}>{totalCount}</span>{" "}
+                      {typeLabel[parserType]}
                     </h2>
                     <p className="text-sm text-gray-500 mt-0.5">
                       已選取 {selectedCount} / {totalCount}
@@ -709,7 +1205,7 @@ export default function App() {
                   <div className="flex gap-2">
                     <button
                       onClick={handleSelectAll}
-                      className="px-3 py-1.5 rounded-lg text-sm text-blue-400 border border-blue-500/30 hover:bg-blue-500/10 transition-all duration-150"
+                      className={`px-3 py-1.5 rounded-lg text-sm border transition-all duration-150 ${accentText(accentColor)} border-white/10 hover:bg-white/5`}
                     >
                       全選
                     </button>
@@ -724,13 +1220,24 @@ export default function App() {
 
                 {/* Cards */}
                 <div className="flex flex-col gap-3 mb-8">
-                  {parserType === "airport"
-                    ? transfers.map((t) => (
-                        <AirportTransferCard key={t.id} transfer={t} onToggle={handleToggleTransfer} />
-                      ))
-                    : events.map((event) => (
-                        <EventCard key={event.id} event={event} onToggle={handleToggleEvent} />
-                      ))}
+                  {parserType === "Airport Transfer" && transfers.map((t) => (
+                    <AirportTransferCard key={t.id} transfer={t} onToggle={handleToggleTransfer} />
+                  ))}
+                  {parserType === "Course" && events.map((e) => (
+                    <EventCard key={e.id} event={e} onToggle={handleToggleEvent} />
+                  ))}
+                  {parserType === "Medical" && medicalItems.map((m) => (
+                    <MedicalCard key={m.id} item={m} onToggle={handleToggleMedical} />
+                  ))}
+                  {parserType === "Shopping" && shoppingItems.map((s) => (
+                    <ShoppingCard key={s.id} item={s} onToggle={handleToggleShopping} />
+                  ))}
+                  {parserType === "Payment" && paymentItems.map((p) => (
+                    <PaymentCard key={p.id} item={p} onToggle={handleTogglePayment} />
+                  ))}
+                  {parserType === "Pending" && pendingItems.map((p) => (
+                    <PendingCard key={p.id} item={p} onToggle={handleTogglePending} />
+                  ))}
                 </div>
 
                 {/* Create Selected button */}
@@ -742,7 +1249,7 @@ export default function App() {
                   建立所選（{selectedCount}）
                 </button>
 
-                {/* ── Apple Reminders preview ── */}
+                {/* ── Apple Reminders preview (Course only) ── */}
                 {reminderItems.length > 0 && (
                   <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5">
                     <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold mb-4">
@@ -774,12 +1281,49 @@ export default function App() {
                     </p>
                   </div>
                 )}
+
+                {/* ── Apple Calendar preview (Course only) ── */}
+                {calendarItems.length > 0 && (
+                  <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
+                    <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold mb-4">
+                      已準備 {calendarItems.length} 筆行事曆資料
+                    </p>
+                    <div className="flex flex-col gap-3">
+                      {calendarItems.map((item) => (
+                        <div
+                          key={item.sourceEventId}
+                          className="rounded-xl border border-white/10 bg-white/5 p-4 flex flex-col gap-1"
+                        >
+                          <p className="font-semibold text-white text-sm">{item.title}</p>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-1 text-xs text-gray-400">
+                            <span className="text-gray-600">開始</span>
+                            <span>{formatReminderDate(item.startDate)}</span>
+                            <span className="text-gray-600">結束</span>
+                            <span>{formatReminderDate(item.endDate)}</span>
+                            {item.location && (
+                              <>
+                                <span className="text-gray-600">地點</span>
+                                <span>{item.location}</span>
+                              </>
+                            )}
+                          </div>
+                          {item.notes && (
+                            <p className="mt-1 text-xs text-gray-500 whitespace-pre-line leading-relaxed">
+                              {item.notes}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-600 mt-4 italic">
+                      資料已準備完成，尚未同步至 Apple 行事曆。
+                    </p>
+                  </div>
+                )}
               </>
             ) : (
               <p className="text-sm text-gray-500 mt-2">
-                {parserType === "airport"
-                  ? "未找到接送機行程，請確認每筆資料以四位數時間開頭（如：2100）"
-                  : "未找到任何活動，請確認訊息不為空白"}
+                {emptyHint[parserType]}
               </p>
             )}
           </>
