@@ -5,10 +5,12 @@ import {
   deleteReminder,
   loadReminders,
   toggleReminderComplete,
+  updateReminder,
   type Reminder,
 } from "./store";
 import { RemindersPage } from "./pages/RemindersPage";
 import { PendingPage } from "./pages/PendingPage";
+import { EditPage } from "./pages/EditPage";
 
 // ─── Course parser types & helpers ───────────────────────────────────────────
 
@@ -1128,6 +1130,28 @@ export default function App() {
     setSavedReminders(toggleReminderComplete(id));
   }
 
+  const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
+
+  function handleOpenEdit(id: string) {
+    setEditingReminderId(id);
+  }
+
+  function handleCloseEdit() {
+    setEditingReminderId(null);
+  }
+
+  function handleSaveEdit(patch: Partial<Reminder>) {
+    if (!editingReminderId) return;
+    setSavedReminders(updateReminder(editingReminderId, patch));
+    setEditingReminderId(null);
+  }
+
+  function handleDeleteFromEdit() {
+    if (!editingReminderId) return;
+    setSavedReminders(deleteReminder(editingReminderId));
+    setEditingReminderId(null);
+  }
+
   function resetParsed() {
     setEvents([]);
     setTransfers([]);
@@ -1809,6 +1833,7 @@ export default function App() {
           reminders={savedReminders}
           onDelete={handleDeleteReminder}
           onToggleComplete={handleToggleReminderComplete}
+          onEdit={handleOpenEdit}
         />
       )}
       {activePage === "pending" && (
@@ -1816,6 +1841,17 @@ export default function App() {
           count={savedReminders.filter((r) => r.type === "Pending").length}
         />
       )}
+      {editingReminderId !== null &&
+        !!savedReminders.find((r) => r.id === editingReminderId) && (
+          <div className="fixed inset-0 bg-gray-950 z-40 overflow-y-auto">
+            <EditPage
+              reminder={savedReminders.find((r) => r.id === editingReminderId)!}
+              onSave={handleSaveEdit}
+              onCancel={handleCloseEdit}
+              onDelete={handleDeleteFromEdit}
+            />
+          </div>
+        )}
       </main>
       <BottomNav
         activePage={activePage}

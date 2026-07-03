@@ -79,24 +79,27 @@ function ReminderCard({
   reminder,
   onToggleComplete,
   onDelete,
+  onEdit,
 }: {
   reminder: Reminder;
   onToggleComplete: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (id: string) => void;
 }) {
   const badge = TYPE_BADGE[reminder.type];
 
   return (
     <div
-      className={`rounded-xl border p-4 flex items-start gap-3 transition-all duration-150 ${
+      onClick={() => onEdit(reminder.id)}
+      className={`rounded-xl border p-4 flex items-start gap-3 transition-all duration-150 cursor-pointer ${
         reminder.completed
           ? "border-white/5 bg-white/[0.02] opacity-50"
-          : "border-white/10 bg-white/5"
+          : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/[0.07]"
       }`}
     >
       {/* Complete toggle */}
       <button
-        onClick={() => onToggleComplete(reminder.id)}
+        onClick={(e) => { e.stopPropagation(); onToggleComplete(reminder.id); }}
         className={`mt-0.5 w-5 h-5 rounded-full border-2 shrink-0 transition-all duration-150 flex items-center justify-center ${
           reminder.completed
             ? "border-blue-500 bg-blue-500"
@@ -142,7 +145,7 @@ function ReminderCard({
 
       {/* Delete */}
       <button
-        onClick={() => onDelete(reminder.id)}
+        onClick={(e) => { e.stopPropagation(); onDelete(reminder.id); }}
         className="shrink-0 w-6 h-6 rounded-lg flex items-center justify-center text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-all duration-150"
         title="刪除"
       >
@@ -219,10 +222,12 @@ export function RemindersPage({
   reminders,
   onToggleComplete,
   onDelete,
+  onEdit,
 }: {
   reminders: Reminder[];
   onToggleComplete: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (id: string) => void;
 }) {
   const activeCount = reminders.filter((r) => !r.completed).length;
 
@@ -288,6 +293,7 @@ export function RemindersPage({
                     reminder={r}
                     onToggleComplete={onToggleComplete}
                     onDelete={onDelete}
+                    onEdit={onEdit}
                   />
                 ))}
               </div>

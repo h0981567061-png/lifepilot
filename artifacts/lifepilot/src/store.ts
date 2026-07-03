@@ -40,6 +40,12 @@ export interface Reminder {
   // Medical
   hospital?: string;
   department?: string;
+  // Reminder settings (optional — existing items use defaults in EditPage)
+  reminderEnabled?: boolean;
+  calendarEnabled?: boolean;
+  sameDayReminder?: boolean;
+  dayBeforeReminder?: boolean;
+  hoursBeforeReminder?: number | null;
 }
 
 const STORAGE_KEY = "lifepilot_reminders_v1";
@@ -75,6 +81,14 @@ export function deleteReminder(id: string): Reminder[] {
 export function toggleReminderComplete(id: string): Reminder[] {
   const updated = loadReminders().map((r) =>
     r.id === id ? { ...r, completed: !r.completed } : r
+  );
+  persist(updated);
+  return updated;
+}
+
+export function updateReminder(id: string, patch: Partial<Reminder>): Reminder[] {
+  const updated = loadReminders().map((r) =>
+    r.id === id ? { ...r, ...patch } : r
   );
   persist(updated);
   return updated;
