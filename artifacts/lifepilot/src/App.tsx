@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { isAIConfigured, parseWithAI, type AIEvent } from "./aiParser";
+import { parseWithAI, type AIEvent } from "./aiParser";
 import { normalizeTime, normalizeDate } from "./utils";
 import {
   addReminders,
@@ -1189,7 +1189,6 @@ export default function App() {
   const [calendarItems, setCalendarItems] = useState<CalendarItem[]>([]);
   const [analyzed, setAnalyzed] = useState(false);
   const [error, setError] = useState("");
-  const [aiMode, setAiMode] = useState(true);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSource, setAiSource] = useState<"ai" | "rule" | null>(null);
   const [activePage, setActivePage] = useState<"add" | "reminders" | "pending">("add");
@@ -1445,45 +1444,42 @@ export default function App() {
   async function handleAnalyze() {
     const trimmed = message.trim();
     if (!trimmed) {
-      setError("請先貼上 LINE 訊息內容。");
+      setError("請先貼上訊息內容。");
       return;
     }
     setError("");
     resetParsed();
     setAiSource(null);
 
-    // ── AI path ──────────────────────────────────────────────────────────────
-    if (aiMode && isAIConfigured()) {
-      setAiLoading(true);
-      try {
-        const result = await parseWithAI(trimmed);
-        const mapped = mapAIEvents(result.events);
-        setEvents(mapped.parsedEvents);
-        setTransfers(mapped.parsedTransfers);
-        setMedicalItems(mapped.parsedMedical);
-        setShoppingItems(mapped.parsedShopping);
-        setPaymentItems(mapped.parsedPayment);
-        setPendingItems(mapped.parsedPending);
-        setParserType(mapped.primaryType);
-        setDetectionResult({
-          type: mapped.primaryType,
-          label: mapped.primaryLabel,
-          confidence: mapped.avgConfidence,
-          color: "blue",
-        });
-        setAiSource("ai");
-        setAnalyzed(true);
-        return;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error("AI parsing failed, falling back to local parsers:", msg);
-        setError(`AI 解析失敗，已改用規則模式：${msg.slice(0, 80)}`);
-      } finally {
-        setAiLoading(false);
-      }
+    // ── AI path (always first) ────────────────────────────────────────────────
+    setAiLoading(true);
+    try {
+      const result = await parseWithAI(trimmed);
+      const mapped = mapAIEvents(result.events);
+      setEvents(mapped.parsedEvents);
+      setTransfers(mapped.parsedTransfers);
+      setMedicalItems(mapped.parsedMedical);
+      setShoppingItems(mapped.parsedShopping);
+      setPaymentItems(mapped.parsedPayment);
+      setPendingItems(mapped.parsedPending);
+      setParserType(mapped.primaryType);
+      setDetectionResult({
+        type: mapped.primaryType,
+        label: mapped.primaryLabel,
+        confidence: mapped.avgConfidence,
+        color: "blue",
+      });
+      setAiSource("ai");
+      setAnalyzed(true);
+      return;
+    } catch (err) {
+      console.error("AI parsing failed, falling back to local parsers:", err);
+      setError("AI 整理暫時無法使用，已改用基本整理模式。");
+    } finally {
+      setAiLoading(false);
     }
 
-    // ── Rule-based fallback (also default when aiMode is off) ─────────────────
+    // ── Rule-based fallback ────────────────────────────────────────────────────
     setAiSource("rule");
     runLocalParsers(trimmed);
     setAnalyzed(true);
@@ -1722,7 +1718,7 @@ export default function App() {
           <h1 className="text-5xl font-bold tracking-tight text-white mb-2">
             LifePilot
           </h1>
-          <p className="text-gray-400 text-base">貼上 LINE 訊息，自動分析行程活動</p>
+          <p className="text-gray-400 text-base">貼上訊息，AI 幫你整理成提醒事項</p>
         </div>
 
         <div className="mb-2">
@@ -1741,70 +1737,45 @@ export default function App() {
 
         {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
 
-        {/* ── AI mode toggle ── */}
-        <div className="flex items-center justify-between mt-4">
-          <button
-            onClick={() => setAiMode((m) => !m)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border transition-all duration-150 ${
-              aiMode
-                ? "border-blue-500/40 bg-blue-500/10 text-blue-300"
-                : "border-white/10 bg-white/5 text-gray-400 hover:bg-white/5"
-            }`}
-          >
-            <span>⚡ AI 解析</span>
-            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${aiMode ? "bg-blue-500/20 text-blue-300" : "bg-white/10 text-gray-500"}`}>
-              {aiMode ? "開啟" : "關閉"}
-            </span>
-          </button>
-        </div>
-
-
         <button
           onClick={handleAnalyze}
           disabled={aiLoading || !message.trim()}
           className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:bg-blue-600/40 disabled:cursor-not-allowed text-white font-semibold text-base transition-all duration-150 shadow-lg shadow-blue-600/20 mt-4 mb-10"
         >
-          {aiLoading ? "AI 解析中…" : "Analyze"}
+          {aiLoading ? "正在整理…" : "開始整理"}
         </button>
 
         {analyzed && (
           <>
-            {/* ── Detection result card ── */}
-            {detectionResult && (
-              <div className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-5 flex flex-col gap-3">
-                <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold">偵測類型</p>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className={`text-2xl font-bold ${accentText(accentColor)}`}>
-                    {detectionResult.label}
-                  </span>
-                  {aiSource === "ai" && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-300 font-medium">
-                      AI 解析
+            {/* ── Compact detection summary ── */}
+            {detectionResult && (() => {
+              const multiTypes = [transfers, events, medicalItems, shoppingItems, paymentItems, pendingItems].filter((a) => a.length > 0).length;
+              return (
+                <div className="mb-5 flex items-center gap-2 flex-wrap">
+                  {aiSource === "ai" && multiTypes > 1 ? (
+                    <span className="text-sm text-gray-300">
+                      已整理{" "}
+                      <span className="text-blue-300 font-semibold">{multiTypes}</span>{" "}
+                      種類型 · 共{" "}
+                      <span className="text-blue-300 font-semibold">{totalCount}</span>{" "}
+                      個事項
                     </span>
+                  ) : (
+                    <span className="text-sm text-gray-400">
+                      {detectionResult.label}
+                      {" · "}
+                      <span className={accentText(accentColor)}>{detectionResult.confidence}%</span>
+                    </span>
+                  )}
+                  {aiSource === "ai" && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-300 font-medium">AI</span>
                   )}
                   {aiSource === "rule" && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-gray-500">
-                      規則解析
-                    </span>
-                  )}
-                  {aiSource !== "ai" && (
-                    <span className="text-sm text-gray-500">({detectionResult.type})</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-gray-500">基本模式</span>
                   )}
                 </div>
-                <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold mt-1">信心度</p>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${accentBg(accentColor)}`}
-                      style={{ width: `${detectionResult.confidence}%` }}
-                    />
-                  </div>
-                  <span className={`text-lg font-bold tabular-nums ${accentText(accentColor)}`}>
-                    {detectionResult.confidence}%
-                  </span>
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* ── Preview section ── */}
             {totalCount > 0 ? (
@@ -1813,9 +1784,9 @@ export default function App() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h2 className="text-lg font-semibold text-white">
-                      找到{" "}
+                      已整理{" "}
                       <span className={accentText(accentColor)}>{totalCount}</span>{" "}
-                      {aiSource === "ai" ? "個事項" : typeLabel[parserType]}
+                      個事項
                     </h2>
                     <p className="text-sm text-gray-500 mt-0.5">
                       已選取 {selectedCount} / {totalCount}
