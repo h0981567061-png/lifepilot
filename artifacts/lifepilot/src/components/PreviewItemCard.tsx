@@ -468,7 +468,7 @@ export function PreviewItemCard({
 
       <div className="space-y-3">
         {/* Type selector */}
-        <FormRow label="類型">
+        <FormRow label="事項類型">
           <select
             value={draft.type}
             onChange={(e) =>
@@ -490,7 +490,7 @@ export function PreviewItemCard({
         </FormRow>
 
         {/* Category selector */}
-        <FormRow label="分類">
+        <FormRow label="我的分類">
           <select
             value={draft.category}
             onChange={(e) => upd({ category: e.target.value })}

@@ -13,8 +13,9 @@ import {
   type Reminder,
 } from "./store";
 import { RemindersPage } from "./pages/RemindersPage";
-import { PendingPage } from "./pages/PendingPage";
-import { EditPage } from "./pages/EditPage";
+import { FinancePage }  from "./pages/FinancePage";
+import { MyPage }       from "./pages/MyPage";
+import { EditPage }     from "./pages/EditPage";
 
 // ─── Course parser types & helpers ───────────────────────────────────────────
 
@@ -761,23 +762,22 @@ function accentCheckbox(color: string) {
 
 // ─── Bottom navigation ────────────────────────────────────────────────────────
 
-type PageId = "add" | "reminders" | "pending";
+type PageId = "add" | "reminders" | "finance" | "my";
 
 function BottomNav({
   activePage,
   onNavigate,
   remindersCount,
-  pendingCount,
 }: {
   activePage: PageId;
   onNavigate: (page: PageId) => void;
   remindersCount: number;
-  pendingCount: number;
 }) {
   const tabs: { id: PageId; label: string; badge?: number }[] = [
-    { id: "add", label: "新增" },
+    { id: "add",       label: "新增" },
     { id: "reminders", label: "提醒事項", badge: remindersCount },
-    { id: "pending", label: "待確認", badge: pendingCount },
+    { id: "finance",   label: "收支" },
+    { id: "my",        label: "我的" },
   ];
 
   return (
@@ -821,7 +821,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSource, setAiSource] = useState<"ai" | "rule" | null>(null);
-  const [activePage, setActivePage] = useState<"add" | "reminders" | "pending">("add");
+  const [activePage, setActivePage] = useState<PageId>("add");
   const [savedReminders, setSavedReminders] = useState<Reminder[]>(() => loadReminders());
   const [bulkDatePickerOpen, setBulkDatePickerOpen] = useState(false);
   const [bulkDateValue, setBulkDateValue] = useState("");
@@ -1358,10 +1358,11 @@ export default function App() {
           onEdit={handleOpenEdit}
         />
       )}
-      {activePage === "pending" && (
-        <PendingPage
-          count={savedReminders.filter((r) => r.type === "Pending").length}
-        />
+      {activePage === "finance" && (
+        <FinancePage reminders={savedReminders} />
+      )}
+      {activePage === "my" && (
+        <MyPage />
       )}
       {editingReminderId !== null &&
         !!savedReminders.find((r) => r.id === editingReminderId) && (
@@ -1379,7 +1380,6 @@ export default function App() {
         activePage={activePage}
         onNavigate={setActivePage}
         remindersCount={savedReminders.length}
-        pendingCount={savedReminders.filter((r) => r.type === "Pending").length}
       />
     </div>
   );
