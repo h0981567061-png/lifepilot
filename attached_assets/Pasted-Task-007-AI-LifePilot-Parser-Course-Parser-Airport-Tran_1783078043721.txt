@@ -1,0 +1,196 @@
+Task-007：建立 AI 自由文字解析層
+
+目前 LifePilot 已有可正常運作的本機規則 Parser：
+
+- Course Parser
+- Airport Transfer Parser
+- Shopping Parser
+- Payment Parser
+- Medical Parser
+
+這些 Parser 已完成測試，請保留，不要刪除，也不要破壞現有功能。
+
+────────────────
+
+本次目標：
+
+建立 AI 自由文字解析層。
+
+使用者不需要按照固定格式輸入，也不需要使用空白行分隔。
+
+AI 必須閱讀整段自然語言，理解內容後：
+
+1. 判斷有幾個不同事項。
+2. 自動拆分事項。
+3. 為每個事項分類。
+4. 擷取結構化欄位。
+5. 回傳統一格式的 JSON。
+6. 將結果交給現有預覽卡片 UI 顯示。
+
+────────────────
+
+支援類型：
+
+- Course
+- Airport Transfer
+- Shopping
+- Payment
+- Medical
+- Work
+- Family
+- Pending
+
+────────────────
+
+範例輸入：
+
+下星期三早上10點帶媽媽去桃園榮總看骨科，
+回來記得買牛奶、雞蛋和衛生紙，
+信用卡8月5日前要繳23560元。
+
+預期結果：
+
+共 3 個事項。
+
+第一筆：
+
+type: Medical
+title: 帶媽媽看骨科
+date: 根據目前日期解析「下星期三」
+time: 10:00
+location: 桃園榮總
+department: 骨科
+notes: 帶媽媽
+
+第二筆：
+
+type: Shopping
+title: 購物清單
+items:
+- 牛奶
+- 雞蛋
+- 衛生紙
+
+第三筆：
+
+type: Payment
+title: 信用卡
+dueDate: 8/5
+amount: 23560
+
+────────────────
+
+AI 統一輸出格式：
+
+{
+  "events": [
+    {
+      "type": "",
+      "title": "",
+      "date": null,
+      "startTime": null,
+      "endTime": null,
+      "location": null,
+      "flightNumber": null,
+      "transferType": null,
+      "district": null,
+      "vehicleType": null,
+      "price": null,
+      "dueDate": null,
+      "amount": null,
+      "hospital": null,
+      "department": null,
+      "items": [],
+      "notes": "",
+      "confidence": 0
+    }
+  ]
+}
+
+────────────────
+
+重要 AI 行為規則：
+
+1. 不要捏造原文沒有提供的資訊。
+
+2. 無法確定的欄位請使用 null，不要猜測。
+
+3. 一段文字可能包含不同類型的多個事項。
+
+4. AI 必須按照語意拆分，而不是單純按照換行拆分。
+
+5. 購物清單中的多個商品應合併為一個 Shopping event。
+
+6. 同一個醫療預約的日期、時間、醫院、科別與備註應合併為一個 Medical event。
+
+7. 同一筆付款的名稱、截止日期與金額應合併為一個 Payment event。
+
+8. Airport Transfer 可以在同一段文字中包含多筆工作，每筆工作建立獨立 event。
+
+9. 如果日期只有月／日，保留原始日期資訊，不要擅自猜錯年份。
+
+10. 對「今天、明天、後天、下星期三」等相對日期，解析時必須使用目前日期與 Asia/Taipei 時區。
+
+────────────────
+
+解析流程：
+
+User Input
+
+↓
+
+AI Parser
+
+↓
+
+Validate JSON Structure
+
+↓
+
+If AI result is valid:
+Use AI result
+
+If AI fails, times out, returns invalid JSON, or API is unavailable:
+Automatically use the existing local rule-based Parser
+
+↓
+
+Preview Cards
+
+────────────────
+
+非常重要：
+
+- 不要刪除現有 Parser。
+- 不要覆蓋現有 Parser。
+- 現有 Parser 必須保留作為 fallback。
+- 不要破壞 Course Parser。
+- 不要破壞 Airport Transfer Parser。
+- 不要破壞 Shopping Parser。
+- 不要破壞 Payment Parser。
+- 不要破壞 Medical Parser。
+- 不要改變目前 UI 風格。
+- 不要刪除目前的分類與信心度顯示。
+- 不要刪除勾選功能。
+- 不要自動開始 Task-008。
+
+如果目前環境沒有可用的 AI API：
+
+請先停止 AI API 串接步驟。
+
+不要假裝 AI 已成功運作。
+
+不要用固定規則假裝成 AI。
+
+保留現有 App 功能，並清楚告訴我需要完成什麼設定才能啟用真正的 AI Parser。
+
+完成後請說明：
+
+1. 修改了哪些檔案。
+2. AI Parser 的流程。
+3. JSON 驗證方式。
+4. Fallback 如何運作。
+5. 如何測試 AI 模式。
+6. 如何確認目前使用的是真正 AI，而不是規則 Parser。
+7. API 不可用時的行為。
+8. 目前限制。
