@@ -34,7 +34,10 @@ _Describe the high-level user-facing capabilities of this app once they exist._
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- 所有 Agent 回覆一律使用**繁體中文**。
+- 所有進度說明、完成報告、測試步驟、錯誤說明與操作指示，一律使用繁體中文。
+- 程式碼、檔案名稱、API endpoint、環境變數名稱，以及技術上必須保留英文的內容維持原樣。
+- 不要使用簡體中文。
 
 ## Gotchas
 
