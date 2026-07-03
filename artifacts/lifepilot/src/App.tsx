@@ -48,6 +48,7 @@ interface MedicalItem {
 
 interface ShoppingItem {
   id: number;
+  date: string;
   lines: string[];
   amount: string;
   selected: boolean;
@@ -372,21 +373,32 @@ function parseShopping(text: string): ShoppingItem[] {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   if (lines.length === 0) return [];
 
+  let date = "";
   let amount = "";
   const itemLines: string[] = [];
 
   for (const line of lines) {
+    // Extract a leading date line (e.g. "6/27") — only take the very first match
+    if (!date) {
+      const d = extractDate(line);
+      // Accept as the date line only if it is a pure date (no other meaningful text)
+      if (d && line.replace(d, "").trim() === "") {
+        date = d;
+        continue;
+      }
+    }
+    // Amount / total line
     const amtMatch = line.match(
-      /NT\$?\s*[\d,]+|NTD\s*[\d,]+|總計\s*[：:]?\s*[\d,]+|合計\s*[：:]?\s*[\d,]+/
+      /NT\$?\s*[\d,]+|NTD\s*[\d,]+|總計\s*[：:]?\s*[\d,]+|合計\s*[：:]?\s*[\d,]+|\d+元/
     );
     if (amtMatch && !amount) {
       amount = amtMatch[0];
-    } else {
-      itemLines.push(line);
+      continue;
     }
+    itemLines.push(line);
   }
 
-  return [{ id: 1, lines: itemLines, amount, selected: true }];
+  return [{ id: 1, date, lines: itemLines, amount, selected: true }];
 }
 
 // ─── Payment parser ───────────────────────────────────────────────────────────
@@ -476,16 +488,30 @@ function detectMessageType(text: string): DetectionResult {
 
   // ── Shopping ──
   scores["Shopping"] +=
-    (full.match(/購買|訂單|商品|結帳|收據|發票|折扣|優惠|免運|出貨|宅配|購物|下單/g) ?? []).length * 20;
+    (full.match(/購買|訂單|商品|結帳|收據|發票|折扣|優惠|免運|出貨|宅配|購物|下單|採購|清單/g) ?? []).length * 20;
   if (/NT\$|NTD/.test(full)) scores["Shopping"] += 15;
+  // Structural: 3+ short Chinese-only lines (≤15 chars) suggest a product list
+  {
+    const shortChineseLines = lines.filter((l) =>
+      /^[\u4e00-\u9fff\s]{1,15}$/.test(l) && l.trim().length > 0
+    );
+    if (shortChineseLines.length >= 3) scores["Shopping"] += shortChineseLines.length * 5;
+  }
 
   // ── Payment ──
   scores["Payment"] +=
-    (full.match(/轉帳|匯款|帳號|收款|付款|ATM|繳費|銀行|戶名|存款|匯入|繳納/g) ?? []).length * 20;
+    (full.match(/轉帳|匯款|帳號|收款|付款|ATM|繳費|銀行|戶名|存款|匯入|繳納|截止|到期|期限/g) ?? []).length * 20;
+  scores["Payment"] +=
+    (full.match(/信用卡|電費|水費|電話費|瓦斯費|水電費|停車費|管理費|繳款/g) ?? []).length * 15;
+  scores["Payment"] +=
+    (full.match(/\d+元/g) ?? []).length * 10;
 
   // ── Medical ──
   scores["Medical"] +=
-    (full.match(/掛號|診所|醫院|看診|門診|醫師|醫生|回診|複診|藥局|處方|掛診|榮總|長庚|台大/g) ?? []).length * 20;
+    (full.match(/掛號|診所|醫院|看診|門診|醫師|醫生|回診|複診|藥局|處方|掛診|榮總|長庚|台大/g) ?? []).length * 25;
+  // Department names also signal Medical
+  scores["Medical"] +=
+    (full.match(/骨科|內科|外科|眼科|耳鼻喉|皮膚科|牙科|精神科|婦產科|兒科|心臟科|神經科|復健科|家醫科|腸胃科/g) ?? []).length * 20;
 
   // ── Find winner ──
   const entries = Object.entries(scores);
@@ -910,7 +936,14 @@ function ShoppingCard({
         className="mt-0.5 w-4 h-4 rounded accent-purple-500 cursor-pointer shrink-0"
       />
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-white leading-snug mb-2">購物清單</p>
+        <div className="flex items-center gap-2 mb-2">
+          <p className="font-semibold text-white leading-snug">購物清單</p>
+          {item.date && (
+            <span className="text-xs text-purple-300/80 bg-purple-500/10 px-1.5 py-0.5 rounded">
+              {item.date}
+            </span>
+          )}
+        </div>
         <ul className="text-sm text-gray-300 space-y-0.5 list-none">
           {item.lines.map((l, i) => (
             <li key={i} className="flex items-start gap-2">
