@@ -1,5 +1,14 @@
 import { useState } from "react";
 import { isAIConfigured, parseWithAI, type AIEvent } from "./aiParser";
+import {
+  addReminders,
+  deleteReminder,
+  loadReminders,
+  toggleReminderComplete,
+  type Reminder,
+} from "./store";
+import { RemindersPage } from "./pages/RemindersPage";
+import { PendingPage } from "./pages/PendingPage";
 
 // ─── Course parser types & helpers ───────────────────────────────────────────
 
@@ -1038,6 +1047,59 @@ function PendingCard({
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
+// ─── Bottom navigation ────────────────────────────────────────────────────────
+
+type PageId = "add" | "reminders" | "pending";
+
+function BottomNav({
+  activePage,
+  onNavigate,
+  remindersCount,
+  pendingCount,
+}: {
+  activePage: PageId;
+  onNavigate: (page: PageId) => void;
+  remindersCount: number;
+  pendingCount: number;
+}) {
+  const tabs: { id: PageId; label: string; badge?: number }[] = [
+    { id: "add", label: "新增" },
+    { id: "reminders", label: "提醒事項", badge: remindersCount },
+    { id: "pending", label: "待確認", badge: pendingCount },
+  ];
+
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 h-[58px] bg-gray-950/95 backdrop-blur border-t border-white/10 flex z-50">
+      {tabs.map((tab) => {
+        const active = activePage === tab.id;
+        return (
+          <button
+            key={tab.id}
+            onClick={() => onNavigate(tab.id)}
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 text-xs transition-colors duration-150 ${
+              active ? "text-blue-400" : "text-gray-500 hover:text-gray-300"
+            }`}
+          >
+            <div className="relative">
+              <span className={`text-[11px] font-semibold tracking-wide ${active ? "text-blue-400" : ""}`}>
+                {tab.label}
+              </span>
+              {tab.badge !== undefined && tab.badge > 0 && (
+                <span className="absolute -top-1.5 -right-3.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-blue-500 text-white text-[9px] font-bold px-1">
+                  {tab.badge > 99 ? "99+" : tab.badge}
+                </span>
+              )}
+            </div>
+            {active && (
+              <span className="w-1 h-1 rounded-full bg-blue-400" />
+            )}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 export default function App() {
   const [message, setMessage] = useState("");
   const [events, setEvents] = useState<Event[]>([]);
@@ -1055,6 +1117,16 @@ export default function App() {
   const [aiMode, setAiMode] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSource, setAiSource] = useState<"ai" | "rule" | null>(null);
+  const [activePage, setActivePage] = useState<"add" | "reminders" | "pending">("add");
+  const [savedReminders, setSavedReminders] = useState<Reminder[]>(() => loadReminders());
+
+  function handleDeleteReminder(id: string) {
+    setSavedReminders(deleteReminder(id));
+  }
+
+  function handleToggleReminderComplete(id: string) {
+    setSavedReminders(toggleReminderComplete(id));
+  }
 
   function resetParsed() {
     setEvents([]);
@@ -1329,18 +1401,88 @@ export default function App() {
     }
   }
 
-  function handleCreate() {
-    if (parserType === "Course") {
-      setReminderItems(buildReminderItems(events));
-      setCalendarItems(buildCalendarItems(events));
-    } else if (parserType === "Airport Transfer") {
-      const n = transfers.filter((t) => t.selected).length;
-      alert(`已建立 ${n} 筆接送機行程到 LifePilot。`);
-    } else {
-      // For Medical / Shopping / Payment / Pending: just confirm
-      const label = detectionResult?.label ?? "項目";
-      alert(`已確認 1 筆${label}資料。`);
+  function buildNewReminders(): Reminder[] {
+    const now = new Date().toISOString();
+    const uid = () => crypto.randomUUID();
+    const results: Reminder[] = [];
+    const includeAll = aiSource === "ai";
+
+    if (includeAll || parserType === "Course") {
+      for (const e of events.filter((ev) => ev.keepInLifePilot)) {
+        results.push({
+          id: uid(), type: "Course", completed: false, createdAt: now,
+          title: e.title, date: e.date, startTime: e.time, endTime: "",
+          location: e.location, notes: "",
+        });
+      }
     }
+    if (includeAll || parserType === "Airport Transfer") {
+      for (const t of transfers.filter((tr) => tr.selected)) {
+        results.push({
+          id: uid(), type: "Airport Transfer", completed: false, createdAt: now,
+          title: [t.type, t.flight].filter(Boolean).join(" ") || "接送機",
+          date: "", startTime: t.time, endTime: "",
+          location: t.district, notes: t.notes,
+          flightNumber: t.flight, transferType: t.type,
+          district: t.district, vehicleType: t.vehicle, price: t.price,
+        });
+      }
+    }
+    if (includeAll || parserType === "Medical") {
+      for (const m of medicalItems.filter((mi) => mi.selected)) {
+        results.push({
+          id: uid(), type: "Medical", completed: false, createdAt: now,
+          title: [m.hospital, m.department].filter(Boolean).join(" ") || "醫療預約",
+          date: m.date, startTime: m.time, endTime: "",
+          location: m.hospital, notes: m.notes,
+          hospital: m.hospital, department: m.department,
+        });
+      }
+    }
+    if (includeAll || parserType === "Shopping") {
+      for (const s of shoppingItems.filter((si) => si.selected)) {
+        results.push({
+          id: uid(), type: "Shopping", completed: false, createdAt: now,
+          title: "購物清單", date: s.date, startTime: "", endTime: "",
+          location: "", notes: "",
+          shoppingItems: s.lines, amount: s.amount,
+        });
+      }
+    }
+    if (includeAll || parserType === "Payment") {
+      for (const p of paymentItems.filter((pi) => pi.selected)) {
+        results.push({
+          id: uid(), type: "Payment", completed: false, createdAt: now,
+          title: p.name || "付款提醒",
+          date: p.dueDate, startTime: "", endTime: "",
+          location: "", notes: p.notes,
+          dueDate: p.dueDate, amount: p.amount,
+        });
+      }
+    }
+    if (includeAll || parserType === "Pending") {
+      for (const p of pendingItems.filter((pi) => pi.selected)) {
+        results.push({
+          id: uid(), type: "Pending", completed: false, createdAt: now,
+          title: p.text || "待確認事項",
+          date: "", startTime: "", endTime: "",
+          location: "", notes: "",
+        });
+      }
+    }
+    return results;
+  }
+
+  function handleCreate() {
+    const newItems = buildNewReminders();
+    if (newItems.length === 0) return;
+    const updated = addReminders(newItems);
+    setSavedReminders(updated);
+    setActivePage("reminders");
+    setAnalyzed(false);
+    setMessage("");
+    resetParsed();
+    setAiSource(null);
   }
 
   // ── Derived counts ──
@@ -1414,7 +1556,9 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
+      <main className="flex-1 overflow-y-auto pb-20">
+      {activePage === "add" && (
       <div className="max-w-2xl mx-auto px-6 py-14">
         <div className="mb-10">
           <h1 className="text-5xl font-bold tracking-tight text-white mb-2">
@@ -1659,6 +1803,26 @@ export default function App() {
           </>
         )}
       </div>
+      )}
+      {activePage === "reminders" && (
+        <RemindersPage
+          reminders={savedReminders}
+          onDelete={handleDeleteReminder}
+          onToggleComplete={handleToggleReminderComplete}
+        />
+      )}
+      {activePage === "pending" && (
+        <PendingPage
+          count={savedReminders.filter((r) => r.type === "Pending").length}
+        />
+      )}
+      </main>
+      <BottomNav
+        activePage={activePage}
+        onNavigate={setActivePage}
+        remindersCount={savedReminders.length}
+        pendingCount={savedReminders.filter((r) => r.type === "Pending").length}
+      />
     </div>
   );
 }
