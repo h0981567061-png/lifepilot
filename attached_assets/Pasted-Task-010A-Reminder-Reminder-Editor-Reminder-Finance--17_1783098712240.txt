@@ -1,0 +1,499 @@
+Task-010A：建立 Reminder 財務狀態與待收／待付基礎
+
+目前 Reminder Editor 已完成統一。
+
+下一步建立 Reminder 與 Finance 之間的財務狀態基礎。
+
+本次目標：
+
+1. Reminder 可以設定財務狀態
+2. 支援無財務關聯、待收、待付
+3. 顯示預計金額
+4. 顯示財務到期日
+5. AI 建立與手動新增的 Reminder 使用相同資料邏輯
+6. 待收／待付不能算入正式 Finance 收支
+7. 相關收支區塊移到提醒設定上方
+
+重要：
+本次只建立財務狀態基礎。
+不要做確認收款。
+不要做確認付款。
+不要自動建立 Finance Record。
+不要修改 Groq API。
+不要修改 AI Prompt。
+不要修改 Parser 判斷邏輯。
+
+────────────────
+
+一、Reminder 財務狀態
+
+請在 Reminder 資料中以 optional 欄位加入財務資訊。
+
+請依目前專案實際型別結構選擇最小修改方式。
+
+需要支援：
+
+financialStatus:
+
+none
+receivable
+payable
+
+語意：
+
+none：
+無財務關聯
+
+receivable：
+待收
+
+payable：
+待付
+
+另外支援：
+
+expectedAmount?: number
+
+financialDueDate?: string
+
+重要：
+
+新欄位必須 optional。
+
+舊 Reminder 沒有這些欄位時，
+必須正常顯示與編輯。
+
+不要進行破壞性 migration。
+不要清除 LocalStorage。
+
+────────────────
+
+二、Reminder Editor 財務區塊
+
+所有 Reminder Editor 都可以使用財務狀態。
+
+在基本資料與 Type 專屬欄位之後，
+提醒設定之前，
+新增：
+
+財務資訊
+
+狀態：
+
+無
+待收
+待付
+
+如果選擇：
+
+無
+
+隱藏：
+
+預計金額
+財務到期日
+
+如果選擇：
+
+待收
+
+顯示：
+
+預計金額
+預計收款日（選填）
+
+如果選擇：
+
+待付
+
+顯示：
+
+預計金額
+付款期限（選填）
+
+────────────────
+
+三、Payment Reminder 的處理
+
+目前 Payment 例如：
+
+信用卡繳費
+截止日期：2026/08/05
+金額：23560
+
+這筆資料的財務語意應為：
+
+financialStatus = payable
+
+expectedAmount = 23560
+
+financialDueDate = 2026/08/05
+
+UI 顯示：
+
+財務資訊
+
+待付
+
+預計金額
+NT$ 23,560
+
+付款期限
+2026/08/05
+
+重要：
+
+不要因為 Payment 有 amount，
+就建立 Expense Finance Record。
+
+23560 現階段是：
+
+待付金額
+
+不是：
+
+已支出 23560
+
+────────────────
+
+四、AirportTransfer Reminder 的處理
+
+例如：
+
+CI173 接機
+接送費用 1000
+
+財務狀態可以設定為：
+
+待收
+
+預計金額：
+
+1000
+
+UI 顯示：
+
+財務資訊
+
+待收
+
+預計金額
+NT$ 1,000
+
+重要：
+
+AirportTransfer 的接送費用不能直接顯示為正式收入。
+
+在沒有 Finance Record 前：
+
+不能顯示：
+
+收入 + NT$ 1,000
+
+只能顯示：
+
+待收 NT$ 1,000
+
+────────────────
+
+五、其他 Reminder Type
+
+Medical
+Course
+Shopping
+General
+
+預設：
+
+financialStatus = none
+
+但使用者可以在 Editor 中手動切換：
+
+無
+待收
+待付
+
+例如 Medical：
+
+帶媽媽看骨科
+
+可以設定：
+
+待付
+預計金額 500
+
+例如 Course：
+
+教學生英文課
+
+可以設定：
+
+待收
+預計金額 2000
+
+不要依 Type 限制使用者只能選某一種財務狀態。
+
+────────────────
+
+六、舊資料相容
+
+目前可能已有：
+
+Payment.amount
+Payment.dueDate
+
+AirportTransfer.amount
+
+請不要刪除舊欄位。
+
+如果舊 Payment Reminder 沒有 financialStatus，
+但有 amount 與 dueDate，
+
+Editor 可以用相容方式顯示為：
+
+待付
+預計金額 = amount
+付款期限 = dueDate
+
+如果舊 AirportTransfer 沒有 financialStatus，
+不要直接假設已收入。
+
+可以保留原本接送費用顯示，
+但正式 Finance Summary 不得將它算成收入。
+
+避免一次進行大量資料 migration。
+
+────────────────
+
+七、相關收支區塊位置
+
+目前「相關收支」位於提醒設定下方。
+
+請將整個：
+
+相關收支
+
+區塊移到：
+
+Type 專屬資料／財務資訊之後
+提醒設定之前
+
+順序建議：
+
+基本資料
+
+Type 專屬資料
+
+財務資訊
+
+相關收支
+
+提醒設定
+
+行事曆
+
+儲存／取消
+
+刪除此事項
+
+────────────────
+
+八、相關收支按鈕文字
+
+目前：
+
+＋ 記帳
+
+改為：
+
+＋ 新增收支
+
+沒有 Finance Record 時顯示：
+
+尚無相關收支紀錄
+
+＋ 新增收支
+
+已有 Finance Record 時，
+保留目前相關收支功能。
+
+本次不要重做 Finance Editor。
+
+────────────────
+
+九、Reminder Card 顯示
+
+如果 Reminder 為：
+
+receivable
+
+且尚未完成正式收款：
+
+顯示：
+
+待收 NT$ 1,000
+
+如果 Reminder 為：
+
+payable
+
+顯示：
+
+待付 NT$ 23,560
+
+待收與待付使用清楚但不過度醒目的狀態色。
+
+重要：
+
+待收不能加進收入總額。
+
+待付不能加進支出總額。
+
+────────────────
+
+十、Finance Record 保持獨立
+
+現有 Finance Record 邏輯保持不變。
+
+本次不要：
+
+自動建立 Income
+自動建立 Expense
+確認收款
+確認付款
+修改 Finance 統計
+修改收支首頁總額
+
+正式 Finance Record 與 Reminder 財務狀態仍然分開。
+
+Reminder：
+
+待收／待付
+
+Finance Record：
+
+實際收入／實際支出
+
+────────────────
+
+十一、不要修改
+
+不要修改：
+
+Groq API
+
+/api/parse
+
+AI Prompt
+
+Fallback Parser
+
+Category Store
+
+群組管理
+
+Bottom Navigation
+
+現有 Finance Store 結構
+
+現有 sourceReminderId 關聯邏輯
+
+不要大幅重構 App.tsx。
+
+不要清除 LocalStorage。
+
+不要刪除現有 Reminder。
+
+不要自動開始下一個 Task。
+
+────────────────
+
+十二、測試
+
+測試 1：
+
+信用卡繳費
+
+金額：
+23560
+
+期限：
+2026/08/05
+
+預期：
+
+待付 NT$ 23,560
+
+不能計入正式支出。
+
+────────────────
+
+測試 2：
+
+CI173 接機
+
+接送費用：
+1000
+
+設定：
+
+待收
+
+預期：
+
+待收 NT$ 1,000
+
+不能計入正式收入。
+
+────────────────
+
+測試 3：
+
+帶媽媽看骨科
+
+設定：
+
+無財務關聯
+
+預期：
+
+不顯示待收或待付金額。
+
+────────────────
+
+測試 4：
+
+手動新增課程
+
+標題：
+英文家教
+
+設定：
+
+待收
+
+預計金額：
+2000
+
+預期：
+
+Reminder Card 顯示：
+
+待收 NT$ 2,000
+
+但 Finance 收入總額不增加。
+
+────────────────
+
+完成後請使用繁體中文說明：
+
+1. 修改哪些檔案
+2. Reminder 新增哪些 optional 財務欄位
+3. 舊 Payment 如何相容
+4. 舊 AirportTransfer 如何相容
+5. 待收與待付如何避免進入正式收支統計
+6. 相關收支區塊移到哪裡
+7. 如何測試手動新增 Reminder
+8. 如何測試既有 Reminder
+9. TypeScript 是否通過
+10. 是否修改任何 Parser 或 Groq API

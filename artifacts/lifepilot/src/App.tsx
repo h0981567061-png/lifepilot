@@ -1126,6 +1126,9 @@ export default function App() {
       source: item.source,
       merchant: item.merchant,
       reminders: item.reminders?.length ? item.reminders : undefined,
+      financialStatus: item.financialStatus !== "none" ? item.financialStatus : undefined,
+      expectedAmount: item.expectedAmount,
+      financialDueDate: item.financialDueDate || undefined,
     }));
   }
 

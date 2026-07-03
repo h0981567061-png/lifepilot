@@ -1,0 +1,918 @@
+Task-010A：事項財務狀態＋提醒卡片收支摘要＋相關收支區塊整理
+
+目前 Reminder Editor 已完成共通欄位統一與「分類 → 群組」UI 命名調整。
+
+現在需要建立 Reminder 的財務狀態基礎，
+並改善 Reminder Card 的財務資訊顯示。
+
+本次任務只處理：
+
+A. Reminder 財務狀態：無／待收／待付
+B. Reminder Card 顯示待收／待付
+C. Reminder Card 顯示已關聯 Finance Record 的收入／支出摘要
+D. EditPage 的「相關收支」區塊位置上移
+E. 「＋記帳」改名為「＋新增收支」
+
+本次不要做：
+
+- 確認收款
+- 確認付款
+- 自動建立 Income
+- 自動建立 Expense
+- 修改 Finance 首頁統計
+- 修改 AI Parser
+- 修改 Groq API
+- 修改 /api/parse
+- 大規模重構 App.tsx
+
+────────────────────────
+
+一、Reminder 財務狀態資料
+
+請依目前專案實際 Reminder 型別結構，
+使用最小修改方式加入 optional 財務欄位。
+
+需要支援：
+
+financialStatus?: "none" | "receivable" | "payable"
+
+expectedAmount?: number
+
+financialDueDate?: string
+
+語意：
+
+none
+＝ 無財務關聯
+
+receivable
+＝ 待收
+
+payable
+＝ 待付
+
+重要：
+
+所有新欄位必須保持 optional，
+確保舊 Reminder 可以正常讀取。
+
+不要進行破壞性 migration。
+
+不要清除 LocalStorage。
+
+不要修改既有 LocalStorage key。
+
+────────────────────────
+
+二、所有 Reminder 都可以設定財務狀態
+
+所有 Reminder Type：
+
+General
+Medical
+Course
+Shopping
+Payment
+AirportTransfer
+
+都可以設定：
+
+無
+待收
+待付
+
+不要限制某個 Type 只能使用某種狀態。
+
+例如：
+
+Medical
+也可以設定待付。
+
+Course
+也可以設定待收。
+
+Shopping
+也可以設定待付。
+
+General
+也可以設定待收或待付。
+
+────────────────────────
+
+三、Editor 新增統一「財務資訊」區塊
+
+在所有 Reminder EditPage 中加入：
+
+財務資訊
+
+狀態：
+
+無
+待收
+待付
+
+如果選擇：
+
+無
+
+不顯示：
+
+預計金額
+財務到期日
+
+如果選擇：
+
+待收
+
+顯示：
+
+預計金額
+預計收款日（選填）
+
+如果選擇：
+
+待付
+
+顯示：
+
+預計金額
+付款期限（選填）
+
+金額欄位請使用 number input 或專案目前安全的數字輸入方式。
+
+儲存時 amount 必須是 number，
+不要儲存成字串。
+
+────────────────────────
+
+四、Payment Reminder 相容邏輯
+
+目前既有 Payment Reminder 可能已有：
+
+amount
+dueDate
+
+例如：
+
+信用卡繳費
+
+amount：
+23560
+
+dueDate：
+2026/08/05
+
+如果舊資料沒有 financialStatus，
+但 Type 是 Payment，
+且存在 amount，
+
+Editor 相容顯示為：
+
+財務狀態：
+待付
+
+預計金額：
+23560
+
+付款期限：
+2026/08/05
+
+對應語意：
+
+financialStatus = payable
+
+expectedAmount = amount
+
+financialDueDate = dueDate
+
+重要：
+
+不要刪除既有 Payment.amount。
+
+不要刪除既有 Payment.dueDate。
+
+不要進行大量資料 migration。
+
+可以使用讀取 fallback 或儲存時同步更新的方式保持相容。
+
+Payment 的 23560 現階段代表：
+
+待付 NT$ 23,560
+
+不是：
+
+已支出 NT$ 23,560
+
+不能因為 Payment Reminder 有 amount，
+就建立 Expense Finance Record。
+
+────────────────────────
+
+五、AirportTransfer Reminder 相容邏輯
+
+目前既有 AirportTransfer 可能已有：
+
+amount
+
+例如：
+
+CI173 接機
+
+接送費用：
+1000
+
+這個 amount 目前代表：
+
+接送事項的預計費用或報價
+
+它不能直接算成正式收入。
+
+如果使用者將財務狀態設定為：
+
+待收
+
+則顯示：
+
+待收 NT$ 1,000
+
+如果沒有設定 financialStatus，
+仍然保留原本：
+
+接送費用 1000 元
+
+但不能顯示：
+
+收入 + NT$ 1,000
+
+除非真的存在關聯的 Income Finance Record。
+
+────────────────────────
+
+六、Reminder Card：待收／待付顯示
+
+Reminder Card 根據 financialStatus 顯示財務狀態。
+
+情況 1：
+
+financialStatus = receivable
+
+expectedAmount = 1000
+
+顯示：
+
+待收 NT$ 1,000
+
+────────────────
+
+情況 2：
+
+financialStatus = payable
+
+expectedAmount = 23560
+
+顯示：
+
+待付 NT$ 23,560
+
+────────────────
+
+情況 3：
+
+financialStatus = none
+或沒有 financialStatus
+
+不顯示待收／待付摘要。
+
+────────────────
+
+Payment 舊資料相容：
+
+如果是 Payment，
+沒有 financialStatus，
+但存在 amount，
+
+Card 可以相容顯示：
+
+待付 NT$ 23,560
+
+但不能算進 Finance 支出統計。
+
+────────────────────────
+
+七、Reminder Card：真正的收支摘要
+
+目前 Reminder Card 可能只顯示：
+
+已記帳 X 筆
+
+資訊不夠清楚。
+
+請根據 Finance Records 的 sourceReminderId，
+計算該 Reminder 的真正相關收支。
+
+注意：
+
+這裡只能計算 Finance Record。
+
+不能計算：
+
+Reminder.expectedAmount
+Payment.amount
+AirportTransfer.amount
+
+────────────────
+
+只有收入時：
+
+例如關聯：
+
+Income 1000
+
+顯示：
+
+收入 + NT$ 1,000
+
+次要資訊可以顯示：
+
+1 筆
+
+────────────────
+
+只有支出時：
+
+例如關聯：
+
+Expense 150
+Expense 320
+Expense 60
+
+顯示：
+
+支出 - NT$ 530
+
+次要資訊：
+
+3 筆
+
+────────────────
+
+同時有收入與支出時：
+
+例如：
+
+Income 1000
+Expense 100
+Expense 40
+
+顯示：
+
+收入 + NT$ 1,000
+支出 - NT$ 140
+
+次要資訊：
+
+3 筆
+
+不要只顯示：
+
+已記帳 3 筆
+
+────────────────────────
+
+八、待收／待付與實際收支可以同時存在
+
+Reminder 財務狀態與 Finance Record 是不同概念。
+
+例如：
+
+CI173 接機
+
+Reminder：
+
+待收 NT$ 1,000
+
+Finance Records：
+
+Expense 100
+Expense 40
+
+Card 可以顯示：
+
+待收 NT$ 1,000
+
+支出 - NT$ 140
+2 筆
+
+這是正確狀態。
+
+因為：
+
+1000 尚未收到，
+但停車費與過路費已經實際支出。
+
+────────────────
+
+另一個例子：
+
+信用卡繳費
+
+Reminder：
+
+待付 NT$ 23,560
+
+如果尚無 Finance Record：
+
+只顯示：
+
+待付 NT$ 23,560
+
+不能顯示：
+
+支出 - NT$ 23,560
+
+────────────────────────
+
+九、Finance Summary 計算規則
+
+收入總額：
+
+只加總該 Reminder 關聯的 Income Finance Records。
+
+支出總額：
+
+只加總該 Reminder 關聯的 Expense Finance Records。
+
+必須依目前專案 Finance Record 的實際 type 欄位值判斷。
+
+請先讀取現有型別與 Store，
+不要自行假設 enum 大小寫。
+
+amount 必須以 number 加總。
+
+避免：
+
+NaN
+字串相加
+重複計算
+將 Reminder amount 加入 Finance Summary
+將 expectedAmount 加入 Finance Summary
+
+────────────────────────
+
+十、Reminder Card UI
+
+財務摘要放在 Reminder Card 的次要資訊區域。
+
+建議顯示順序：
+
+事項基本資訊
+
+Type 專屬摘要
+
+待收／待付狀態
+
+實際收支摘要
+
+例如：
+
+接機 CI173
+2026/07/17　21:15　中山
+CI173　接送費用 1000 元
+
+待收 NT$ 1,000
+
+收入 + NT$ 0 不要顯示
+支出 - NT$ 140｜2 筆
+
+────────────────
+
+如果收入為 0：
+
+不要顯示：
+
+收入 + NT$ 0
+
+如果支出為 0：
+
+不要顯示：
+
+支出 - NT$ 0
+
+如果沒有任何 Finance Record：
+
+不要顯示：
+
+已記帳 0 筆
+
+────────────────
+
+收入使用目前 Finance UI 的收入色系。
+
+支出使用目前 Finance UI 的支出色系。
+
+待收與待付使用清楚但不過度醒目的狀態樣式。
+
+不要讓財務摘要搶過 Reminder 標題。
+
+手機寬度不足時允許自然換行。
+
+────────────────────────
+
+十一、EditPage 區塊順序調整
+
+目前「相關收支」位於提醒設定下方，
+手機操作時位置太深。
+
+請將整個「相關收支」區塊移到「提醒設定」上方。
+
+統一順序：
+
+1. 基本資料
+2. Type 專屬資料
+3. 財務資訊
+4. 相關收支
+5. 提醒設定
+6. 行事曆
+7. 儲存／取消
+8. 刪除此事項
+
+不要只移動按鈕。
+
+請移動整個：
+
+相關收支
+
+區塊。
+
+────────────────────────
+
+十二、相關收支按鈕文字
+
+目前：
+
+＋ 記帳
+
+改為：
+
+＋ 新增收支
+
+沒有相關 Finance Record 時：
+
+相關收支
+
+尚無相關收支紀錄
+
+＋ 新增收支
+
+已有相關 Finance Record 時：
+
+顯示目前已有的收支資料或摘要，
+
+並保留：
+
+＋ 新增收支
+
+不要重做 Finance Editor。
+
+不要修改 sourceReminderId 現有邏輯。
+
+────────────────────────
+
+十三、手動新增 Reminder 必須支援
+
+從底部導覽：
+
+新增
+
+手動建立 Reminder 時，
+也必須可以設定：
+
+無
+待收
+待付
+
+以及：
+
+預計金額
+預計收款日
+付款期限
+
+AI 建立與手動建立的 Reminder，
+最後都使用相同的 Reminder 資料結構。
+
+不要建立兩套財務狀態邏輯。
+
+────────────────────────
+
+十四、本次不要修改 AI Parser
+
+本次不要修改：
+
+Groq API
+/api/parse
+AI Prompt
+aiParser.ts
+Fallback Parser
+
+即使目前 AI 對：
+
+收到尾款
+信用卡繳費
+接送費用
+
+判斷還不完整，
+
+本次也不要修改 Parser。
+
+Parser 財務語意會在後續獨立 Task 處理。
+
+────────────────────────
+
+十五、本次不要做確認收付款
+
+不要新增：
+
+確認收款
+
+確認付款
+
+標記已收
+
+標記已付
+
+自動轉 Income
+
+自動轉 Expense
+
+這些功能留給下一個 Task。
+
+本次只建立：
+
+無
+待收
+待付
+
+以及：
+
+Reminder Card 顯示
+Finance Summary 顯示
+
+────────────────────────
+
+十六、不要修改 Finance 首頁統計
+
+本次不要將：
+
+待收
+
+加入收入總額。
+
+本次不要將：
+
+待付
+
+加入支出總額。
+
+不要修改目前 Finance Dashboard 的：
+
+收入
+支出
+結餘
+
+正式統計仍然只能計算真正的 Finance Records。
+
+後續 Task 再增加：
+
+待收入總額
+待支出總額
+
+────────────────────────
+
+十七、測試案例 1：Payment
+
+Reminder：
+
+信用卡繳費
+
+amount：
+23560
+
+dueDate：
+2026/08/05
+
+沒有 Finance Record。
+
+預期 Card：
+
+待付 NT$ 23,560
+
+不能顯示：
+
+支出 - NT$ 23,560
+
+Finance Dashboard 的支出總額不能增加。
+
+────────────────────────
+
+十八、測試案例 2：AirportTransfer
+
+Reminder：
+
+接機 CI173
+
+日期：
+2026/07/17
+
+時間：
+21:15
+
+接送費用：
+1000
+
+設定：
+
+待收
+
+預期 Card：
+
+待收 NT$ 1,000
+
+如果沒有 Finance Record：
+
+不能顯示：
+
+收入 + NT$ 1,000
+
+────────────────────────
+
+十九、測試案例 3：AirportTransfer 有成本
+
+Reminder：
+
+接機 CI173
+
+待收：
+1000
+
+關聯 Finance Records：
+
+Expense 100
+Expense 40
+
+預期 Card：
+
+待收 NT$ 1,000
+
+支出 - NT$ 140
+
+2 筆
+
+────────────────────────
+
+二十、測試案例 4：Medical
+
+Reminder：
+
+帶媽媽看骨科
+
+關聯 Finance Records：
+
+Expense 150
+Expense 320
+Expense 60
+
+預期 Card：
+
+支出 - NT$ 530
+
+3 筆
+
+如果 financialStatus = none：
+
+不要顯示待收或待付。
+
+────────────────────────
+
+二十一、測試案例 5：Course
+
+手動新增：
+
+英文家教
+
+financialStatus：
+
+receivable
+
+expectedAmount：
+
+2000
+
+沒有 Finance Record。
+
+預期 Card：
+
+待收 NT$ 2,000
+
+Finance Dashboard 收入總額不能增加。
+
+────────────────────────
+
+二十二、測試案例 6：同時有收入與支出
+
+Reminder：
+
+某工作事項
+
+Finance Records：
+
+Income 5000
+Expense 500
+Expense 200
+
+預期：
+
+收入 + NT$ 5,000
+
+支出 - NT$ 700
+
+3 筆
+
+不要只顯示：
+
+已記帳 3 筆
+
+────────────────────────
+
+二十三、舊資料安全
+
+請確保：
+
+舊 Reminder 可以正常載入。
+
+舊 Payment 可以正常顯示。
+
+舊 AirportTransfer 可以正常顯示。
+
+舊 Finance Record 不受影響。
+
+sourceReminderId 關聯不受影響。
+
+Category Store 不受影響。
+
+群組功能不受影響。
+
+不要清除 LocalStorage。
+
+不要進行破壞性 migration。
+
+────────────────────────
+
+二十四、禁止事項
+
+不要修改 Groq API。
+
+不要修改 /api/parse。
+
+不要修改 AI Parser。
+
+不要修改 Fallback Parser。
+
+不要修改 Category Store。
+
+不要修改群組管理。
+
+不要修改 Bottom Navigation。
+
+不要重新設計 Finance Store。
+
+不要修改 sourceReminderId 的既有關聯方式。
+
+不要清除 LocalStorage。
+
+不要刪除現有 Reminder。
+
+不要刪除現有 Finance Record。
+
+不要大幅重構 App.tsx。
+
+不要自動開始下一個 Task。
+
+────────────────────────
+
+完成後請全程使用繁體中文說明：
+
+1. 修改或新增哪些檔案。
+2. Reminder 新增哪些 optional 財務欄位。
+3. Payment 舊資料如何相容。
+4. AirportTransfer 舊資料如何相容。
+5. Reminder Card 如何顯示待收／待付。
+6. Reminder Card 如何找到 sourceReminderId 關聯的 Finance Records。
+7. 收入與支出如何分別加總。
+8. 如何避免 expectedAmount 被算進正式收入。
+9. 如何避免 Payment.amount 被算進正式支出。
+10. 「相關收支」區塊移到哪裡。
+11. 手動新增 Reminder 如何設定待收／待付。
+12. 舊資料是否正常相容。
+13. TypeScript 是否通過。
+14. 是否修改任何 Parser 或 Groq API。
+15. 請列出實際測試結果。

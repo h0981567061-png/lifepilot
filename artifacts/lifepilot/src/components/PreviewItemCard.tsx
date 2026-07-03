@@ -579,6 +579,55 @@ export function PreviewItemCard({
           setDraft={setDraft}
         />
 
+        {/* Financial status */}
+        <FormRow label="財務狀態">
+          <div className="space-y-2">
+            <div className="flex gap-2 flex-wrap">
+              {(
+                [
+                  { key: "none",       label: "無",   cls: "bg-white/10 text-gray-300 border-white/25" },
+                  { key: "receivable", label: "待收", cls: "bg-teal-500/20 text-teal-300 border-teal-500/40" },
+                  { key: "payable",    label: "待付", cls: "bg-rose-500/20 text-rose-300 border-rose-500/40" },
+                ] as const
+              ).map(({ key, label, cls }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => upd({ financialStatus: key, expectedAmount: key === "none" ? undefined : draft.expectedAmount })}
+                  className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
+                    (draft.financialStatus ?? "none") === key
+                      ? cls
+                      : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {(draft.financialStatus === "receivable" || draft.financialStatus === "payable") && (
+              <div className="flex gap-2 flex-wrap items-center">
+                <input
+                  type="number"
+                  value={draft.expectedAmount ?? ""}
+                  onChange={(e) => upd({ expectedAmount: e.target.value === "" ? undefined : parseFloat(e.target.value) })}
+                  placeholder="預計金額（元）"
+                  min={0}
+                  step={1}
+                  className="flex-1 min-w-[120px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
+                  style={{ colorScheme: "dark" }}
+                />
+                <input
+                  type="date"
+                  value={draft.financialDueDate ?? ""}
+                  onChange={(e) => upd({ financialDueDate: e.target.value })}
+                  className="flex-1 min-w-[140px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
+                  style={{ colorScheme: "dark" }}
+                />
+              </div>
+            )}
+          </div>
+        </FormRow>
+
         {/* Notes */}
         <FormRow label="備註">
           <TextInput

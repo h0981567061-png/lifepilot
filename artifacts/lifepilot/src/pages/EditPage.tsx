@@ -150,7 +150,7 @@ function defaultTimeMode(type: string): TimeMode {
   }
 }
 
-// ─── TimeField — renders mode selector + pickers ──────────────────────────────
+// ─── TimeField ────────────────────────────────────────────────────────────────
 
 function TimeField({
   mode, onModeChange,
@@ -172,7 +172,6 @@ function TimeField({
 
   return (
     <div className="space-y-2.5">
-      {/* Mode pills */}
       <div className="flex gap-1.5 flex-wrap">
         {modes.map(({ key, label }) => (
           <button
@@ -189,8 +188,6 @@ function TimeField({
           </button>
         ))}
       </div>
-
-      {/* Pickers */}
       {mode === "single" && (
         <TimePicker value={startTime} onChange={onStartTime} />
       )}
@@ -204,6 +201,16 @@ function TimeField({
     </div>
   );
 }
+
+// ─── FinancialStatusPills ──────────────────────────────────────────────────────
+
+type FinancialStatus = "none" | "receivable" | "payable";
+
+const FINANCIAL_STATUS_OPTIONS: { key: FinancialStatus; label: string; activeClass: string }[] = [
+  { key: "none",       label: "無",   activeClass: "bg-white/10 text-gray-300 border-white/25" },
+  { key: "receivable", label: "待收", activeClass: "bg-teal-500/20 text-teal-300 border-teal-500/40" },
+  { key: "payable",    label: "待付", activeClass: "bg-rose-500/20 text-rose-300 border-rose-500/40" },
+];
 
 // ─── EditPage ─────────────────────────────────────────────────────────────────
 
@@ -232,7 +239,34 @@ export function EditPage({
   const [notes,     setNotes]     = useState(reminder.notes ?? "");
   const [category,  setCategory]  = useState(reminder.category ?? "");
 
-  // Finance tracking
+  // ── Financial status (with backward compat) ───────────────────────────────
+  const [financialStatus, setFinancialStatus] = useState<FinancialStatus>(() => {
+    if (reminder.financialStatus && reminder.financialStatus !== "none") return reminder.financialStatus;
+    // Payment backward compat: old records without financialStatus but with amount
+    if (!reminder.financialStatus && t === "Payment" && reminder.amount) return "payable";
+    return "none";
+  });
+
+  const [expectedAmount, setExpectedAmount] = useState<number | undefined>(() => {
+    if (reminder.expectedAmount !== undefined) return reminder.expectedAmount;
+    // Payment backward compat
+    if (!reminder.financialStatus && t === "Payment" && reminder.amount) {
+      const n = parseFloat(String(reminder.amount).replace(/,/g, ""));
+      return isNaN(n) ? undefined : n;
+    }
+    return undefined;
+  });
+
+  const [financialDueDate, setFinancialDueDate] = useState<string>(() => {
+    if (reminder.financialDueDate) return reminder.financialDueDate;
+    // Payment backward compat
+    if (!reminder.financialStatus && t === "Payment" && reminder.dueDate) {
+      return normalizeDate(reminder.dueDate);
+    }
+    return "";
+  });
+
+  // ── Finance records (linked) ───────────────────────────────────────────────
   const [linkedFinance,    setLinkedFinance]    = useState<FinanceEntry[]>(() =>
     loadFinanceEntries().filter((e) => e.sourceReminderId === reminder.id)
   );
@@ -260,14 +294,14 @@ export function EditPage({
   const [department, setDepartment] = useState(reminder.department ?? "");
 
   // ── Income / Expense ──────────────────────────────────────────────────────
-  const [source,   setSource]   = useState(reminder.source ?? "");
-  const [merchant, setMerchant] = useState(reminder.merchant ?? "");
+  const [source,       setSource]       = useState(reminder.source ?? "");
+  const [merchant,     setMerchant]     = useState(reminder.merchant ?? "");
   const [incomeAmount, setIncomeAmount] = useState(reminder.amount ?? "");
 
   // ── Reminder notifications ────────────────────────────────────────────────
-  const [reminders,        setReminders]        = useState<ReminderNotification[]>(reminder.reminders ?? []);
-  const [reminderEnabled,  setReminderEnabled]  = useState(reminder.reminderEnabled ?? true);
-  const [calendarEnabled,  setCalendarEnabled]  = useState(reminder.calendarEnabled ?? false);
+  const [reminders,       setReminders]       = useState<ReminderNotification[]>(reminder.reminders ?? []);
+  const [reminderEnabled, setReminderEnabled] = useState(reminder.reminderEnabled ?? true);
+  const [calendarEnabled, setCalendarEnabled] = useState(reminder.calendarEnabled ?? false);
 
   // ── Flags ─────────────────────────────────────────────────────────────────
   const isPayment  = t === "Payment";
@@ -282,6 +316,10 @@ export function EditPage({
   // ReminderEditor helpers
   const re_hasDate = isPayment ? !!dueDate : !!date;
   const re_hasTime = timeMode !== "allday" && !!startTime;
+
+  // Finance summary for display (linked Finance Records only)
+  const incomeTotal  = linkedFinance.filter(e => e.type === "Income").reduce((s, e) => s + e.amount, 0);
+  const expenseTotal = linkedFinance.filter(e => e.type === "Expense").reduce((s, e) => s + e.amount, 0);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -309,30 +347,28 @@ export function EditPage({
       location,
       notes,
       category,
-      // Airport Transfer
       flightNumber,
       transferType,
       district,
       vehicleType,
       price,
-      // Shopping
       shoppingItems,
-      // Payment
-      amount: isPayment ? amount : isIncome || isExpense ? incomeAmount : amount,
+      amount: isPayment ? amount : (isIncome || isExpense) ? incomeAmount : amount,
       account,
-      // Medical
       hospital,
       department,
-      // Income / Expense
       source,
       merchant,
-      // Notifications
       reminders,
       reminderEnabled,
       calendarEnabled,
       sameDayReminder:     reminder.sameDayReminder,
       dayBeforeReminder:   reminder.dayBeforeReminder,
       hoursBeforeReminder: reminder.hoursBeforeReminder,
+      // Financial status
+      financialStatus: financialStatus !== "none" ? financialStatus : undefined,
+      expectedAmount:  financialStatus !== "none" ? expectedAmount  : undefined,
+      financialDueDate: financialStatus !== "none" ? (financialDueDate || undefined) : undefined,
     });
   }
 
@@ -370,9 +406,7 @@ export function EditPage({
         </span>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          COMMON FIELDS — all types
-          ══════════════════════════════════════════════════════════════════════ */}
+      {/* ══ 1. 基本資訊 ═════════════════════════════════════════════════════════ */}
       <SectionLabel>基本資訊</SectionLabel>
 
       <FieldRow label="標題">
@@ -383,14 +417,12 @@ export function EditPage({
         <CategorySelect type={t} value={category} onChange={setCategory} />
       </FieldRow>
 
-      {/* Date — Payment uses dueDate; others use date */}
       {!isPending && (
         <FieldRow label={isPayment ? "截止日期" : "日期"}>
           <DateField value={isPayment ? dueDate : date} onChange={isPayment ? setDueDate : setDate} />
         </FieldRow>
       )}
 
-      {/* Time — all non-Pending types */}
       {!isPending && (
         <FieldRow label="時間">
           <TimeField
@@ -404,18 +436,14 @@ export function EditPage({
         </FieldRow>
       )}
 
-      {/* Location */}
       {!isPending && (
         <FieldRow label="地點">
           <TextInput value={location} onChange={setLocation} placeholder="地點（選填）" />
         </FieldRow>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          TYPE-SPECIFIC FIELDS
-          ══════════════════════════════════════════════════════════════════════ */}
+      {/* ══ 2. Type-specific 欄位 ═══════════════════════════════════════════════ */}
 
-      {/* MEDICAL */}
       {isMedical && (
         <>
           <SectionLabel>醫療資訊</SectionLabel>
@@ -428,12 +456,8 @@ export function EditPage({
         </>
       )}
 
-      {/* COURSE */}
-      {isCourse && (
-        <SectionLabel>課程資訊</SectionLabel>
-      )}
+      {isCourse && <SectionLabel>課程資訊</SectionLabel>}
 
-      {/* AIRPORT TRANSFER */}
       {isAirport && (
         <>
           <SectionLabel>接送機資訊</SectionLabel>
@@ -474,7 +498,6 @@ export function EditPage({
         </>
       )}
 
-      {/* SHOPPING */}
       {isShopping && (
         <>
           <SectionLabel>購物清單</SectionLabel>
@@ -517,7 +540,6 @@ export function EditPage({
         </>
       )}
 
-      {/* PAYMENT */}
       {isPayment && (
         <>
           <SectionLabel>付款資訊</SectionLabel>
@@ -530,7 +552,6 @@ export function EditPage({
         </>
       )}
 
-      {/* INCOME */}
       {isIncome && (
         <>
           <SectionLabel>收入資訊</SectionLabel>
@@ -543,7 +564,6 @@ export function EditPage({
         </>
       )}
 
-      {/* EXPENSE */}
       {isExpense && (
         <>
           <SectionLabel>支出資訊</SectionLabel>
@@ -556,16 +576,108 @@ export function EditPage({
         </>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          NOTES — all types
-          ══════════════════════════════════════════════════════════════════════ */}
+      {/* ══ 備註（共通）═══════════════════════════════════════════════════════ */}
       <FieldRow label="備註">
         <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
       </FieldRow>
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          REMINDER SETTINGS — all types (except Pending)
-          ══════════════════════════════════════════════════════════════════════ */}
+      {/* ══ 3. 財務資訊 ════════════════════════════════════════════════════════ */}
+      {!isPending && (
+        <>
+          <SectionLabel>財務資訊</SectionLabel>
+          <FieldRow label="狀態">
+            <div className="flex gap-2 flex-wrap">
+              {FINANCIAL_STATUS_OPTIONS.map(({ key, label, activeClass }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setFinancialStatus(key)}
+                  className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
+                    financialStatus === key
+                      ? activeClass
+                      : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </FieldRow>
+
+          {financialStatus !== "none" && (
+            <>
+              <FieldRow label="預計金額">
+                <input
+                  type="number"
+                  value={expectedAmount ?? ""}
+                  onChange={(e) =>
+                    setExpectedAmount(e.target.value === "" ? undefined : parseFloat(e.target.value))
+                  }
+                  placeholder="金額（元）"
+                  min={0}
+                  step={1}
+                  className="w-full bg-transparent text-sm text-white placeholder-gray-600 focus:outline-none"
+                  style={{ colorScheme: "dark" }}
+                />
+              </FieldRow>
+              <FieldRow label={financialStatus === "receivable" ? "預計收款日" : "付款期限"}>
+                <DateField value={financialDueDate} onChange={setFinancialDueDate} />
+              </FieldRow>
+            </>
+          )}
+        </>
+      )}
+
+      {/* ══ 4. 相關收支 ════════════════════════════════════════════════════════ */}
+      {!isPending && (
+        <>
+          <SectionLabel>相關收支</SectionLabel>
+
+          {/* Finance Records summary */}
+          {linkedFinance.length > 0 ? (
+            <div className="mb-3 space-y-px">
+              {linkedFinance.map((e) => (
+                <div key={e.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                  <div>
+                    <p className="text-sm text-gray-200">{e.title}</p>
+                    {e.financialCategory && (
+                      <p className="text-xs text-gray-500">{e.date} · {e.financialCategory}</p>
+                    )}
+                  </div>
+                  <span className={`text-sm font-medium tabular-nums ${e.type === "Income" ? "text-teal-400" : "text-rose-400"}`}>
+                    {e.type === "Income" ? "+" : "−"} {fmtCurrency(e.amount)}
+                  </span>
+                </div>
+              ))}
+              {/* Finance totals */}
+              {(incomeTotal > 0 || expenseTotal > 0) && (
+                <div className="pt-2 flex flex-wrap gap-3">
+                  {incomeTotal > 0 && (
+                    <span className="text-xs text-teal-400/70">收入 + {fmtCurrency(incomeTotal)}</span>
+                  )}
+                  {expenseTotal > 0 && (
+                    <span className="text-xs text-rose-400/70">支出 − {fmtCurrency(expenseTotal)}</span>
+                  )}
+                  <span className="text-xs text-gray-600">{linkedFinance.length} 筆</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-600 py-2">尚無相關收支紀錄</p>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowQuickFinance(true)}
+            className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 mt-1 mb-6"
+          >
+            <span className="text-sm leading-none">＋</span>
+            <span>新增收支</span>
+          </button>
+        </>
+      )}
+
+      {/* ══ 5. 提醒設定 ════════════════════════════════════════════════════════ */}
       {!isPending && (
         <>
           <SectionLabel>提醒設定</SectionLabel>
@@ -594,44 +706,8 @@ export function EditPage({
         </>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          RELATED FINANCE
-          ══════════════════════════════════════════════════════════════════════ */}
-      {!isPending && (
-        <>
-          <SectionLabel>相關收支</SectionLabel>
-          {linkedFinance.length > 0 ? (
-            <div className="mb-3 space-y-px">
-              {linkedFinance.map((e) => (
-                <div key={e.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-                  <div>
-                    <p className="text-sm text-gray-200">{e.title}</p>
-                    {e.financialCategory && (
-                      <p className="text-xs text-gray-500">{e.date} · {e.financialCategory}</p>
-                    )}
-                  </div>
-                  <span className={`text-sm font-medium tabular-nums ${e.type === "Income" ? "text-teal-400" : "text-rose-400"}`}>
-                    {e.type === "Income" ? "+" : "−"} {fmtCurrency(e.amount)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-gray-600 py-2">尚無相關收支紀錄</p>
-          )}
-          <button
-            type="button"
-            onClick={() => setShowQuickFinance(true)}
-            className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 mt-1 mb-6"
-          >
-            <span className="text-sm leading-none">＋</span>
-            <span>{linkedFinance.length > 0 ? "新增記帳" : "記帳"}</span>
-          </button>
-        </>
-      )}
-
-      {/* ── Action buttons ───────────────────────────────────────────────────── */}
-      <div className="mt-4 flex gap-3">
+      {/* ══ 6. 儲存／取消 ══════════════════════════════════════════════════════ */}
+      <div className="mt-6 flex gap-3">
         <button
           onClick={handleSave}
           className="flex-1 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-600/20"
@@ -645,6 +721,8 @@ export function EditPage({
           取消
         </button>
       </div>
+
+      {/* ══ 7. 刪除 ════════════════════════════════════════════════════════════ */}
       <button
         onClick={handleDeleteConfirm}
         className="w-full mt-3 py-3.5 rounded-xl text-red-400 hover:bg-red-500/8 border border-red-500/20 text-sm font-semibold transition-all"

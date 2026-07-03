@@ -116,6 +116,10 @@ export interface PreviewItem {
   pendingText: string;
   // Reminder notifications (set in inline editor before saving)
   reminders: ReminderNotification[];
+  // Financial status
+  financialStatus: "none" | "receivable" | "payable";
+  expectedAmount?: number;
+  financialDueDate: string;
 }
 
 export function emptyPreviewItem(type: AllType = "General"): PreviewItem {
@@ -145,6 +149,9 @@ export function emptyPreviewItem(type: AllType = "General"): PreviewItem {
     pendingText: "",
     allDay: false,
     reminders: [],
+    financialStatus: "none",
+    expectedAmount: undefined,
+    financialDueDate: "",
   };
 }
 

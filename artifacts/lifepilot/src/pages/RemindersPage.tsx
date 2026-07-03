@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { type Reminder, type ReminderType } from "../store";
 import { QuickFinanceModal } from "../components/QuickFinanceModal";
-import { type FinanceEntry, loadFinanceEntries } from "../financeStore";
+import { type FinanceEntry, loadFinanceEntries, fmtCurrency } from "../financeStore";
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -79,6 +79,25 @@ const TYPE_BADGE: Record<ReminderType, { label: string; className: string }> = {
 
 // Quick-record types (for the "＋記帳" shortcut)
 const FINANCE_TYPES: ReminderType[] = ["Income", "Expense"];
+
+// ─── Financial status helper ──────────────────────────────────────────────────
+
+type EffectiveFinancial = { status: "receivable" | "payable"; amount: number } | null;
+
+function getEffectiveFinancial(reminder: Reminder): EffectiveFinancial {
+  // Explicit financial status set by user
+  if (reminder.financialStatus === "receivable" || reminder.financialStatus === "payable") {
+    const amt = reminder.expectedAmount;
+    if (amt !== undefined && amt > 0) return { status: reminder.financialStatus, amount: amt };
+    return null;
+  }
+  // Payment backward compat: old records without financialStatus but with amount → treat as payable
+  if (!reminder.financialStatus && reminder.type === "Payment" && reminder.amount) {
+    const n = parseFloat(String(reminder.amount).replace(/,/g, ""));
+    if (!isNaN(n) && n > 0) return { status: "payable", amount: n };
+  }
+  return null;
+}
 
 // Filter tabs
 type FilterTab = "all" | ReminderType;
@@ -166,15 +185,19 @@ function ReminderCard({
   onDelete,
   onEdit,
   onQuickFinance,
-  linkedCount,
+  linkedEntries,
 }: {
   reminder: Reminder;
   onToggleComplete: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
   onQuickFinance: (id: string) => void;
-  linkedCount: number;
+  linkedEntries: FinanceEntry[];
 }) {
+  const linkedCount  = linkedEntries.length;
+  const incomeTotal  = linkedEntries.filter(e => e.type === "Income").reduce((s, e) => s + e.amount, 0);
+  const expenseTotal = linkedEntries.filter(e => e.type === "Expense").reduce((s, e) => s + e.amount, 0);
+  const effFinancial = getEffectiveFinancial(reminder);
   const badge    = TYPE_BADGE[reminder.type] ?? TYPE_BADGE.Pending;
   const overdue  = isOverdue(reminder.date, reminder.completed);
   const isFinance = FINANCE_TYPES.includes(reminder.type);
@@ -247,9 +270,25 @@ function ReminderCard({
         {/* Type-specific details */}
         <TypeDetails reminder={reminder} />
 
-        {/* Linked finance badge */}
-        {linkedCount > 0 && (
-          <p className="mt-1.5 text-xs text-gray-600">已記帳 {linkedCount} 筆</p>
+        {/* Financial summary */}
+        {(effFinancial || incomeTotal > 0 || expenseTotal > 0) && (
+          <div className="mt-2 space-y-0.5">
+            {effFinancial?.status === "receivable" && (
+              <p className="text-xs text-teal-400/80">待收 {fmtCurrency(effFinancial.amount)}</p>
+            )}
+            {effFinancial?.status === "payable" && (
+              <p className="text-xs text-rose-300/80">待付 {fmtCurrency(effFinancial.amount)}</p>
+            )}
+            {incomeTotal > 0 && (
+              <p className="text-xs text-teal-400/70">收入 + {fmtCurrency(incomeTotal)}</p>
+            )}
+            {expenseTotal > 0 && (
+              <p className="text-xs text-rose-400/70">支出 − {fmtCurrency(expenseTotal)}</p>
+            )}
+            {linkedCount > 0 && (
+              <p className="text-xs text-gray-600">{linkedCount} 筆</p>
+            )}
+          </div>
         )}
       </div>
 
@@ -484,7 +523,7 @@ export function RemindersPage({
                       onDelete={handleDeleteWithCheck}
                       onEdit={onEdit}
                       onQuickFinance={(id) => setQuickId(id)}
-                      linkedCount={financeEntries.filter((e) => e.sourceReminderId === r.id).length}
+                      linkedEntries={financeEntries.filter((e) => e.sourceReminderId === r.id)}
                     />
                   ))}
                 </div>

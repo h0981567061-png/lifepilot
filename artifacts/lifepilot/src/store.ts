@@ -85,6 +85,10 @@ export interface Reminder {
   hoursBeforeReminder?: number | null;
   // New: structured reminder notifications (v2)
   reminders?: ReminderNotification[];
+  // Financial status (optional — does not affect Finance Store statistics)
+  financialStatus?: "none" | "receivable" | "payable";
+  expectedAmount?: number;      // stored as number
+  financialDueDate?: string;    // YYYY-MM-DD, optional
 }
 
 const STORAGE_KEY = "lifepilot_reminders_v1";
