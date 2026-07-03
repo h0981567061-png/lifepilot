@@ -1,0 +1,729 @@
+Task-010A.3：Reminder 多筆款項清單基礎
+
+目前已完成：
+
+1. Reminder Editor 統一
+2. Reminder 財務狀態基礎
+3. 收支 UI 初步整合
+4. AirportTransfer 與 Payment 金額相容處理
+5. Finance Record 可透過 sourceReminderId 關聯 Reminder
+
+目前發現新的實際需求：
+
+一個 Reminder 不能只有一個 financialStatus。
+
+同一個事項可能同時包含多筆款項，例如：
+
+接機 CI836
+
+待收：
+接送費 1200
+
+待付：
+停車費 100
+過路費 40
+
+或：
+
+帶媽媽看骨科
+
+已支出：
+掛號費 150
+藥費 320
+
+待付：
+檢查費 800
+
+因此本次建立：
+
+「一個 Reminder 可以有多筆 Financial Items」
+
+本次先建立資料結構、編輯 UI、清單顯示與舊資料相容。
+
+重要：
+
+本次不要做勾選後自動建立 Income / Expense。
+本次不要做自動確認收款。
+本次不要做自動確認付款。
+本次不要修改 AI Parser。
+本次不要修改 Groq API。
+本次不要修改 Finance Store 資料結構。
+
+────────────────────────
+
+一、建立 Financial Item 資料型別
+
+請先閱讀目前 Reminder 型別與 Store 結構。
+
+使用最小修改方式新增 Financial Item。
+
+建議型別概念：
+
+FinancialItem {
+  id: string
+  title: string
+  type: "receivable" | "payable"
+  amount: number
+  dueDate?: string
+  note?: string
+  completed?: boolean
+  completedDate?: string
+}
+
+Reminder 新增 optional：
+
+financialItems?: FinancialItem[]
+
+重要：
+
+financialItems 必須 optional。
+
+舊 Reminder 沒有 financialItems 時必須正常運作。
+
+不要清除 LocalStorage。
+
+不要修改既有 LocalStorage key。
+
+不要破壞現有 Reminder。
+
+────────────────────────
+
+二、本次 Financial Item 只處理預計款項
+
+本次 Financial Item type 只需要：
+
+receivable
+payable
+
+UI 顯示：
+
+待收
+待付
+
+正式的：
+
+Income
+Expense
+
+仍然使用現有 Finance Record。
+
+不要把正式收入與正式支出存入 financialItems。
+
+資料概念：
+
+Financial Item
+＝ 預計收款／預計付款
+
+Finance Record
+＝ 真正發生的收入／支出
+
+兩者保持分離。
+
+────────────────────────
+
+三、Reminder Editor 的收支區塊改為清單式
+
+目前收支區可能有：
+
+無
+待收
+待付
+收入
+支出
+
+以及單一預計金額。
+
+請改為更直覺的清單模式。
+
+顯示：
+
+收支
+
+款項
+
+如果沒有 Financial Item：
+
+尚無待收或待付款項
+
+[ ＋ 新增款項 ]
+
+實際收支
+
+如果沒有 Finance Record：
+
+尚無實際收支紀錄
+
+[ ＋ 新增收支 ]
+
+不要再讓整個 Reminder 只能選一個待收或待付狀態。
+
+────────────────────────
+
+四、新增款項
+
+點擊：
+
+＋ 新增款項
+
+顯示簡單表單：
+
+類型
+
+[ 待收 ] [ 待付 ]
+
+名稱
+
+金額
+
+預計日期（選填）
+
+備註（選填）
+
+按鈕：
+
+新增
+
+取消
+
+例如：
+
+類型：
+待收
+
+名稱：
+接送費
+
+金額：
+1200
+
+預計日期：
+2026/07/20
+
+新增後顯示：
+
+☐ 待收　接送費　NT$ 1,200
+
+────────────────────────
+
+五、支援多筆款項
+
+同一個 Reminder 可以新增多筆。
+
+例如 AirportTransfer：
+
+款項
+
+☐ 待收　接送費　　 NT$ 1,200
+☐ 待付　停車費　　 NT$ 100
+☐ 待付　過路費　　 NT$ 40
+
+[ ＋ 新增款項 ]
+
+重要：
+
+新增第二筆時不能覆蓋第一筆。
+
+新增 payable 不能清除 receivable。
+
+新增 receivable 不能清除 payable。
+
+────────────────────────
+
+六、每筆款項可以編輯與刪除
+
+每個 Financial Item 提供簡單操作：
+
+編輯
+刪除
+
+或使用目前專案一致的操作方式。
+
+編輯可以修改：
+
+類型
+名稱
+金額
+預計日期
+備註
+
+刪除時使用目前專案既有確認方式。
+
+不要因刪除 Financial Item 而刪除 Finance Record。
+
+兩者目前仍然是不同資料。
+
+────────────────────────
+
+七、本次 checkbox 行為
+
+每筆 Financial Item 左側可以顯示 checkbox 或狀態圓圈。
+
+但是本次：
+
+點擊 checkbox 不要直接建立 Finance Record。
+
+如果尚未建立安全的完成流程，
+
+點擊後可以：
+
+A. 暫時不允許勾選，顯示 disabled 狀態
+
+或
+
+B. 顯示提示：
+「確認收款／付款功能將於下一階段加入」
+
+請選擇對目前程式改動最小且安全的方式。
+
+重要：
+
+本次絕對不要因點一下 checkbox 就重複建立 Income 或 Expense。
+
+下一個 Task 才處理：
+
+待收 → 確認收款 → Income
+
+待付 → 確認付款 → Expense
+
+────────────────────────
+
+八、實際收支區域
+
+Financial Items 清單下方顯示：
+
+實際收支
+
+Finance Record 仍然依：
+
+sourceReminderId
+
+尋找相關紀錄。
+
+例如：
+
+收入 + NT$ 1,200
+
+支出 - NT$ 140
+
+3 筆紀錄
+
+[ 查看明細 ]
+
+[ ＋ 新增收支 ]
+
+不要預設展開全部 Finance Records。
+
+────────────────────────
+
+九、AirportTransfer 舊資料相容
+
+目前舊 AirportTransfer 可能有：
+
+amount = 1200
+
+並且可能有：
+
+financialStatus = receivable
+
+expectedAmount = 1200
+
+如果：
+
+financialItems 不存在或為空
+
+且舊資料明確存在：
+
+financialStatus = receivable
+expectedAmount > 0
+
+Editor 可以使用相容層顯示一筆：
+
+待收
+接送費
+NT$ 1,200
+
+重要：
+
+避免同一筆舊資料重複產生 Financial Item。
+
+不要每次進入 Editor 都 push 新資料。
+
+如果採用顯示 fallback：
+
+只顯示，不重複寫入。
+
+如果採用儲存時 migration：
+
+必須檢查是否已存在對應 item。
+
+不要造成：
+
+接送費 1200
+接送費 1200
+接送費 1200
+
+────────────────────────
+
+十、Payment 舊資料相容
+
+舊 Payment：
+
+信用卡繳費
+
+amount = 23560
+
+dueDate = 2026/08/05
+
+可能已有：
+
+financialStatus = payable
+
+expectedAmount = 23560
+
+如果 financialItems 不存在或為空，
+
+Editor 相容顯示：
+
+待付
+信用卡繳費
+NT$ 23,560
+2026/08/05
+
+同樣必須避免重複建立。
+
+不要因重新整理頁面而增加第二筆。
+
+不要自動建立 Expense Finance Record。
+
+────────────────────────
+
+十一、一般 Reminder 範例
+
+Medical：
+
+帶媽媽看骨科
+
+可以新增：
+
+待付
+檢查費
+800
+
+實際 Finance Records 已有：
+
+Expense 150
+Expense 320
+
+Editor 顯示：
+
+款項
+
+☐ 待付　檢查費　NT$ 800
+
+＋ 新增款項
+
+
+實際收支
+
+支出 - NT$ 470
+2 筆紀錄
+
+查看明細
+＋ 新增收支
+
+待付 800 不能計入實際支出。
+
+────────────────────────
+
+十二、AirportTransfer 範例
+
+CI836 接機
+
+Financial Items：
+
+receivable
+接送費
+1200
+
+payable
+停車費
+100
+
+payable
+過路費
+40
+
+Editor 顯示：
+
+款項
+
+☐ 待收　接送費　NT$ 1,200
+☐ 待付　停車費　NT$ 100
+☐ 待付　過路費　NT$ 40
+
+＋ 新增款項
+
+實際收支：
+
+尚無實際收支紀錄
+
+＋ 新增收支
+
+────────────────────────
+
+十三、Reminder Card 顯示摘要
+
+Reminder Card 不要展開所有 Financial Items。
+
+只顯示摘要。
+
+例如：
+
+待收 NT$ 1,200
+待付 NT$ 140
+
+如果有實際 Finance Records：
+
+待收 NT$ 1,200
+待付 NT$ 140
+
+收入 + NT$ 1,200
+支出 - NT$ 100
+
+不要把待收加進收入。
+
+不要把待付加進支出。
+
+如果金額為 0，不顯示該項摘要。
+
+────────────────────────
+
+十四、列表頁新增收支按鈕改善
+
+目前 Reminder Card 或相關位置若仍有只有：
+
+＋
+
+的 icon-only 按鈕，
+
+請改成清楚的文字按鈕：
+
+＋ 新增收支
+
+如果空間不足，可以使用：
+
+＋ 收支
+
+但不要只顯示單獨的：
+
+＋
+
+避免使用者不知道功能。
+
+手機版按鈕必須容易點擊。
+
+────────────────────────
+
+十五、舊 financialStatus 暫時保留
+
+不要刪除目前：
+
+financialStatus
+expectedAmount
+financialDueDate
+
+因為需要舊資料相容。
+
+但新的多筆款項 UI 應優先使用：
+
+financialItems
+
+舊欄位只作為：
+
+舊資料相容 fallback
+
+不要繼續把 Reminder 限制成只能有一個 financialStatus。
+
+────────────────────────
+
+十六、資料安全
+
+請特別避免：
+
+1. 每次 render 都新增 Financial Item
+2. 每次進 EditPage 都 migration 一次
+3. 重新整理後重複新增相同款項
+4. 新增 Financial Item 時建立 Finance Record
+5. 刪除 Financial Item 時刪除 Finance Record
+6. 修改 Financial Item 時修改 Finance Dashboard 統計
+7. financialItems amount 使用字串造成加總錯誤
+
+amount 必須是 number。
+
+────────────────────────
+
+十七、本次不要做的功能
+
+本次不要做：
+
+確認收款
+確認付款
+自動建立 Income
+自動建立 Expense
+部分收款
+分期付款
+自動對帳
+Finance Dashboard 待收統計
+Finance Dashboard 待付統計
+AI 自動拆多筆款項
+
+這些全部留給後續 Task。
+
+────────────────────────
+
+十八、不要修改
+
+不要修改 Groq API。
+
+不要修改 /api/parse。
+
+不要修改 AI Prompt。
+
+不要修改 AI Parser。
+
+不要修改 Fallback Parser。
+
+不要修改 Finance Store 資料結構。
+
+不要修改 sourceReminderId 關聯方式。
+
+不要修改 Category Store。
+
+不要修改群組管理。
+
+不要修改 Bottom Navigation。
+
+不要清除 LocalStorage。
+
+不要刪除舊 Reminder。
+
+不要刪除舊 Finance Record。
+
+不要大幅重構 App.tsx。
+
+不要自動開始下一個 Task。
+
+────────────────────────
+
+十九、測試案例
+
+測試 1：
+
+AirportTransfer
+
+新增：
+
+待收 接送費 1200
+待付 停車費 100
+待付 過路費 40
+
+預期：
+
+三筆都存在。
+
+重新整理後仍然只有三筆。
+
+不能變成六筆。
+
+────────────────
+
+測試 2：
+
+Payment 舊資料
+
+信用卡繳費
+23560
+2026/08/05
+
+預期相容顯示：
+
+待付 信用卡繳費 NT$ 23,560
+
+重新進入頁面不能重複新增。
+
+────────────────
+
+測試 3：
+
+Medical
+
+Financial Item：
+
+待付 檢查費 800
+
+Finance Records：
+
+Expense 150
+Expense 320
+
+預期：
+
+待付 NT$ 800
+
+實際支出 - NT$ 470
+2 筆
+
+兩者分開計算。
+
+────────────────
+
+測試 4：
+
+修改款項
+
+接送費：
+
+1200 → 1500
+
+預期：
+
+只修改該 Financial Item。
+
+不能新增第二筆。
+
+不能建立 Income。
+
+────────────────
+
+測試 5：
+
+刪除款項
+
+刪除：
+
+待付 過路費 40
+
+預期：
+
+只刪除該 Financial Item。
+
+不能刪除任何 Finance Record。
+
+────────────────────────
+
+完成後請使用繁體中文說明：
+
+1. 修改或新增哪些檔案。
+2. FinancialItem 型別放在哪裡。
+3. Reminder 如何儲存多筆 financialItems。
+4. 舊 financialStatus 如何相容。
+5. AirportTransfer 舊 amount 如何相容。
+6. Payment 舊 amount 與 dueDate 如何相容。
+7. 如何避免重複 migration。
+8. 如何避免重新整理後重複款項。
+9. Financial Item 與 Finance Record 如何保持分離。
+10. Reminder Card 如何計算待收與待付摘要。
+11. 卡片的新增收支按鈕如何改善。
+12. 五個測試案例的實際結果。
+13. TypeScript 是否通過。
+14. 是否修改 Parser、Groq API 或 Finance Store。

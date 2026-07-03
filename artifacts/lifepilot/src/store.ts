@@ -85,10 +85,27 @@ export interface Reminder {
   hoursBeforeReminder?: number | null;
   // New: structured reminder notifications (v2)
   reminders?: ReminderNotification[];
-  // Financial status (optional — does not affect Finance Store statistics)
+  // Financial status (legacy — kept for backward compat; new data uses financialItems)
   financialStatus?: "none" | "receivable" | "payable";
-  expectedAmount?: number;      // stored as number
-  financialDueDate?: string;    // YYYY-MM-DD, optional
+  expectedAmount?: number;
+  financialDueDate?: string;
+  // Multi-item financial tracking (v2) — replaces single financialStatus
+  financialItems?: FinancialItem[];
+}
+
+// ─── Financial Item ───────────────────────────────────────────────────────────
+// Represents a single expected payment/receivable linked to a Reminder.
+// NOT a real Finance Record — those live in financeStore under FinanceEntry.
+
+export interface FinancialItem {
+  id: string;
+  title: string;
+  type: "receivable" | "payable";
+  amount: number;          // positive, always
+  dueDate?: string;        // YYYY-MM-DD, optional
+  note?: string;
+  completed?: boolean;     // future use — do NOT act on this yet
+  completedDate?: string;  // future use
 }
 
 const STORAGE_KEY = "lifepilot_reminders_v1";

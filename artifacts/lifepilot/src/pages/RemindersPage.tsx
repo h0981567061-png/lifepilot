@@ -80,23 +80,37 @@ const TYPE_BADGE: Record<ReminderType, { label: string; className: string }> = {
 // Quick-record types (for the "＋記帳" shortcut)
 const FINANCE_TYPES: ReminderType[] = ["Income", "Expense"];
 
-// ─── Financial status helper ──────────────────────────────────────────────────
+// ─── Financial Items summary helpers ─────────────────────────────────────────
 
-type EffectiveFinancial = { status: "receivable" | "payable"; amount: number } | null;
-
-function getEffectiveFinancial(reminder: Reminder): EffectiveFinancial {
-  // Explicit financial status set by user
-  if (reminder.financialStatus === "receivable" || reminder.financialStatus === "payable") {
-    const amt = reminder.expectedAmount;
-    if (amt !== undefined && amt > 0) return { status: reminder.financialStatus, amount: amt };
-    return null;
+function getFinancialItemTotals(reminder: Reminder): { receivable: number; payable: number } {
+  // v2: use financialItems if present
+  if (reminder.financialItems && reminder.financialItems.length > 0) {
+    const receivable = reminder.financialItems
+      .filter(i => i.type === "receivable")
+      .reduce((s, i) => s + i.amount, 0);
+    const payable = reminder.financialItems
+      .filter(i => i.type === "payable")
+      .reduce((s, i) => s + i.amount, 0);
+    return { receivable, payable };
   }
-  // Payment backward compat: old records without financialStatus but with amount → treat as payable
+  // Legacy: single financialStatus/expectedAmount
+  if ((reminder.financialStatus === "receivable" || reminder.financialStatus === "payable")
+      && reminder.expectedAmount && reminder.expectedAmount > 0) {
+    return reminder.financialStatus === "receivable"
+      ? { receivable: reminder.expectedAmount, payable: 0 }
+      : { receivable: 0, payable: reminder.expectedAmount };
+  }
+  // Payment backward compat (no financialStatus, has amount)
   if (!reminder.financialStatus && reminder.type === "Payment" && reminder.amount) {
     const n = parseFloat(String(reminder.amount).replace(/,/g, ""));
-    if (!isNaN(n) && n > 0) return { status: "payable", amount: n };
+    if (!isNaN(n) && n > 0) return { receivable: 0, payable: n };
   }
-  return null;
+  // AirportTransfer backward compat
+  if (!reminder.financialStatus && reminder.type === "Airport Transfer" && reminder.amount) {
+    const n = parseFloat(String(reminder.amount).replace(/,/g, ""));
+    if (!isNaN(n) && n > 0) return { receivable: n, payable: 0 };
+  }
+  return { receivable: 0, payable: 0 };
 }
 
 // Filter tabs
@@ -197,7 +211,7 @@ function ReminderCard({
   const linkedCount  = linkedEntries.length;
   const incomeTotal  = linkedEntries.filter(e => e.type === "Income").reduce((s, e) => s + e.amount, 0);
   const expenseTotal = linkedEntries.filter(e => e.type === "Expense").reduce((s, e) => s + e.amount, 0);
-  const effFinancial = getEffectiveFinancial(reminder);
+  const { receivable: receivableTotal, payable: payableTotal } = getFinancialItemTotals(reminder);
   const badge    = TYPE_BADGE[reminder.type] ?? TYPE_BADGE.Pending;
   const overdue  = isOverdue(reminder.date, reminder.completed);
   const isFinance = FINANCE_TYPES.includes(reminder.type);
@@ -271,13 +285,13 @@ function ReminderCard({
         <TypeDetails reminder={reminder} />
 
         {/* Financial summary */}
-        {(effFinancial || incomeTotal > 0 || expenseTotal > 0) && (
+        {(receivableTotal > 0 || payableTotal > 0 || incomeTotal > 0 || expenseTotal > 0) && (
           <div className="mt-2 space-y-0.5">
-            {effFinancial?.status === "receivable" && (
-              <p className="text-xs text-teal-400/80">待收 {fmtCurrency(effFinancial.amount)}</p>
+            {receivableTotal > 0 && (
+              <p className="text-xs text-teal-400/80">待收 {fmtCurrency(receivableTotal)}</p>
             )}
-            {effFinancial?.status === "payable" && (
-              <p className="text-xs text-rose-300/80">待付 {fmtCurrency(effFinancial.amount)}</p>
+            {payableTotal > 0 && (
+              <p className="text-xs text-rose-300/80">待付 {fmtCurrency(payableTotal)}</p>
             )}
             {incomeTotal > 0 && (
               <p className="text-xs text-teal-400/70">收入 + {fmtCurrency(incomeTotal)}</p>
