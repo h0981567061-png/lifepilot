@@ -260,12 +260,20 @@ export function EditPage({
   // ── Saved financial status (written to Reminder on save) ──────────────────
   const [financialStatus, setFinancialStatus] = useState<SavedFinancialStatus>(() => {
     if (reminder.financialStatus === "receivable" || reminder.financialStatus === "payable") return reminder.financialStatus;
+    // Payment backward compat: old records with amount but no financialStatus → payable
     if (!reminder.financialStatus && t === "Payment" && reminder.amount) return "payable";
+    // AirportTransfer backward compat: old records with amount but no financialStatus → receivable
+    if (!reminder.financialStatus && t === "Airport Transfer" && reminder.amount) return "receivable";
     return "none";
   });
   const [expectedAmount, setExpectedAmount] = useState<number | undefined>(() => {
     if (reminder.expectedAmount !== undefined) return reminder.expectedAmount;
     if (!reminder.financialStatus && t === "Payment" && reminder.amount) {
+      const n = parseFloat(String(reminder.amount).replace(/,/g, ""));
+      return isNaN(n) ? undefined : n;
+    }
+    // AirportTransfer backward compat: amount → expectedAmount
+    if (!reminder.financialStatus && t === "Airport Transfer" && reminder.amount) {
       const n = parseFloat(String(reminder.amount).replace(/,/g, ""));
       return isNaN(n) ? undefined : n;
     }
@@ -282,6 +290,8 @@ export function EditPage({
     if (reminder.financialStatus === "receivable") return "receivable";
     if (reminder.financialStatus === "payable")    return "payable";
     if (!reminder.financialStatus && t === "Payment" && reminder.amount) return "payable";
+    // AirportTransfer backward compat
+    if (!reminder.financialStatus && t === "Airport Transfer" && reminder.amount) return "receivable";
     return "none";
   });
 
@@ -322,7 +332,7 @@ export function EditPage({
       setNewFinType(mode);
       setNewFinAmount(defaultFinanceAmount(reminder, mode));
       setNewFinCat(defaultCategory(t, mode));
-      setNewFinDate(normalizeDate(date || dueDate));
+      setNewFinDate(normalizeDate(date || financialDueDate));
       setNewFinNotes("");
     }
   }
@@ -361,10 +371,22 @@ export function EditPage({
   // ── Main save ─────────────────────────────────────────────────────────────
 
   function handleSave() {
+    // Compute backward-compat amount:
+    // - Payment & AirportTransfer: sync amount from expectedAmount (single source of truth)
+    // - Income/Expense type Reminders: use incomeAmount
+    // - Other types: use the (now hidden) amount state as fallback
+    const savedAmount = (() => {
+      if (isPayment)  return String(expectedAmount ?? "");
+      if (isAirport && financialStatus === "receivable") return String(expectedAmount ?? "");
+      if (isIncome || isExpense) return incomeAmount;
+      return amount;
+    })();
+
     onSave({
       title,
-      date:      isPayment ? "" : date,
-      dueDate:   isPayment ? dueDate : undefined,
+      date:    isPayment ? "" : date,
+      // Payment: dueDate comes from financialDueDate (single edit source in 收支 section)
+      dueDate: isPayment ? (financialDueDate || undefined) : undefined,
       startTime: timeMode !== "allday" ? startTime : "",
       endTime:   timeMode === "range"  ? endTime   : "",
       allDay:    timeMode === "allday",
@@ -373,7 +395,7 @@ export function EditPage({
       category,
       flightNumber, transferType, district, vehicleType, price,
       shoppingItems,
-      amount: isPayment ? amount : (isIncome || isExpense) ? incomeAmount : amount,
+      amount: savedAmount,
       account,
       hospital, department, source, merchant,
       reminders, reminderEnabled, calendarEnabled,
@@ -403,7 +425,7 @@ export function EditPage({
 
   const badgeClass = TYPE_BADGE[t] ?? TYPE_BADGE.Pending;
   const badgeLabel = TYPE_LABEL[t as AllType] ?? t;
-  const re_hasDate = isPayment ? !!dueDate : !!date;
+  const re_hasDate = isPayment ? !!financialDueDate : !!date;
   const re_hasTime = timeMode !== "allday" && !!startTime;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -437,12 +459,13 @@ export function EditPage({
         <CategorySelect type={t} value={category} onChange={setCategory} />
       </FieldRow>
 
-      {!isPending && (
-        <FieldRow label={isPayment ? "截止日期" : "日期"}>
+      {/* Payment 截止日期在收支區塊統一編輯，不在此重複顯示 */}
+      {!isPending && !isPayment && (
+        <FieldRow label="日期">
           <input
             type="date"
-            value={isPayment ? dueDate : date}
-            onChange={(e) => isPayment ? setDueDate(e.target.value) : setDate(e.target.value)}
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
             className="w-full bg-transparent text-sm text-white focus:outline-none"
             style={{ colorScheme: "dark" }}
           />
@@ -514,9 +537,7 @@ export function EditPage({
           <FieldRow label="車型">
             <TextInput value={vehicleType} onChange={setVehicleType} placeholder="如 轎車、廂型" />
           </FieldRow>
-          <FieldRow label="接送費用">
-            <TextInput value={price} onChange={setPrice} placeholder="費用（元）" />
-          </FieldRow>
+          {/* 接送費用（預計收款）統一在收支區塊編輯，不在此重複顯示 */}
         </>
       )}
 
@@ -564,10 +585,8 @@ export function EditPage({
 
       {isPayment && (
         <>
+          {/* 金額與截止日期由收支區塊統一編輯 */}
           <SectionLabel>付款資訊</SectionLabel>
-          <FieldRow label="金額">
-            <TextInput value={amount} onChange={setAmount} placeholder="金額（元）" />
-          </FieldRow>
           <FieldRow label="帳戶">
             <TextInput value={account} onChange={setAccount} placeholder="帳戶或繳費方式（選填）" />
           </FieldRow>
