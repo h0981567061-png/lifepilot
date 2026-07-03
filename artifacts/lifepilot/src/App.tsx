@@ -12,10 +12,12 @@ import {
   updateReminder,
   type Reminder,
 } from "./store";
-import { RemindersPage } from "./pages/RemindersPage";
-import { FinancePage }  from "./pages/FinancePage";
-import { MyPage }       from "./pages/MyPage";
-import { EditPage }     from "./pages/EditPage";
+import { RemindersPage }          from "./pages/RemindersPage";
+import { FinancePage }             from "./pages/FinancePage";
+import { MyPage }                  from "./pages/MyPage";
+import { EditPage }                from "./pages/EditPage";
+import { CategoryManagementPage }  from "./pages/CategoryManagementPage";
+import { CategoryProvider }        from "./CategoryContext";
 
 // ─── Course parser types & helpers ───────────────────────────────────────────
 
@@ -822,6 +824,7 @@ export default function App() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSource, setAiSource] = useState<"ai" | "rule" | null>(null);
   const [activePage, setActivePage] = useState<PageId>("add");
+  const [showCategoryMgmt, setShowCategoryMgmt] = useState(false);
   const [savedReminders, setSavedReminders] = useState<Reminder[]>(() => loadReminders());
   const [bulkDatePickerOpen, setBulkDatePickerOpen] = useState(false);
   const [bulkDateValue, setBulkDateValue] = useState("");
@@ -1146,6 +1149,7 @@ export default function App() {
 
 
   return (
+    <CategoryProvider>
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
       <main className="flex-1 overflow-y-auto pb-20">
       {activePage === "add" && (
@@ -1362,7 +1366,7 @@ export default function App() {
         <FinancePage reminders={savedReminders} />
       )}
       {activePage === "my" && (
-        <MyPage />
+        <MyPage onOpenCategoryMgmt={() => setShowCategoryMgmt(true)} />
       )}
       {editingReminderId !== null &&
         !!savedReminders.find((r) => r.id === editingReminderId) && (
@@ -1375,6 +1379,14 @@ export default function App() {
             />
           </div>
         )}
+      {showCategoryMgmt && (
+        <div className="fixed inset-0 bg-gray-950 z-40 overflow-y-auto">
+          <CategoryManagementPage
+            savedReminders={savedReminders}
+            onClose={() => setShowCategoryMgmt(false)}
+          />
+        </div>
+      )}
       </main>
       <BottomNav
         activePage={activePage}
@@ -1382,5 +1394,6 @@ export default function App() {
         remindersCount={savedReminders.length}
       />
     </div>
+    </CategoryProvider>
   );
 }

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import type { Reminder, ReminderNotification } from "../store";
 import { normalizeDate } from "../utils";
-import { getCategoriesForType, TYPE_LABEL, type AllType } from "../previewTypes";
+import { TYPE_LABEL, type AllType } from "../previewTypes";
 import { ReminderEditor } from "../components/ReminderEditor";
+import { CategorySelect } from "../components/CategorySelect";
 
 // ── UI primitives ─────────────────────────────────────────────────────────────
 
@@ -132,33 +133,6 @@ function DateField({
       className="w-full bg-transparent text-sm text-white focus:outline-none"
       style={{ colorScheme: "dark" }}
     />
-  );
-}
-
-function CategorySelect({
-  type,
-  value,
-  onChange,
-}: {
-  type: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const options = getCategoriesForType(type as AllType);
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full bg-transparent text-sm text-white focus:outline-none"
-      style={{ colorScheme: "dark" }}
-    >
-      <option value="">未分類</option>
-      {options.map((cat) => (
-        <option key={cat} value={cat} className="bg-gray-900 text-white">
-          {cat}
-        </option>
-      ))}
-    </select>
   );
 }
 

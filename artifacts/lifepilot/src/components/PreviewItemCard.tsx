@@ -3,12 +3,12 @@ import type { PreviewItem, AllType } from "../previewTypes";
 import {
   ALL_TYPES,
   TYPE_LABEL,
-  getCategoriesForType,
   typeBorderClass,
   typeBadgeClass,
 } from "../previewTypes";
 import { normalizeDate, normalizeTime } from "../utils";
 import { ReminderEditor } from "./ReminderEditor";
+import { CategorySelect } from "./CategorySelect";
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
@@ -491,19 +491,12 @@ export function PreviewItemCard({
 
         {/* Category selector */}
         <FormRow label="我的分類">
-          <select
+          <CategorySelect
+            type={draft.type}
             value={draft.category}
-            onChange={(e) => upd({ category: e.target.value })}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
-            style={{ colorScheme: "dark" }}
-          >
-            <option value="">未分類</option>
-            {getCategoriesForType(draft.type).map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => upd({ category: v })}
+            compact
+          />
         </FormRow>
 
         {/* Title (hidden for Airport Transfer since it derives title from transferType+flight) */}
