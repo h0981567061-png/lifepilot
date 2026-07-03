@@ -1237,7 +1237,7 @@ export default function App() {
     if (aiMode && isAIConfigured()) {
       setAiLoading(true);
       try {
-        const result = await parseWithAI(trimmed, new Date());
+        const result = await parseWithAI(trimmed);
         const mapped = mapAIEvents(result.events);
         setEvents(mapped.parsedEvents);
         setTransfers(mapped.parsedTransfers);
