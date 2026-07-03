@@ -4,13 +4,31 @@ import { type Reminder, type ReminderType } from "../store";
 
 function parseReminderDate(dateStr: string): Date | null {
   if (!dateStr) return null;
-  const m = dateStr.match(/^(\d{1,2})\/(\d{1,2})/);
-  if (!m) return null;
-  const month = parseInt(m[1], 10) - 1;
-  const day = parseInt(m[2], 10);
-  const year = new Date().getFullYear();
-  const d = new Date(year, month, day);
-  return isNaN(d.getTime()) ? null : d;
+
+  // YYYY-MM-DD (from date picker)
+  const iso = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    const d = new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]));
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // M/D or MM/DD (legacy rule-parser output)
+  const md = dateStr.match(/^(\d{1,2})\/(\d{1,2})/);
+  if (md) {
+    const month = parseInt(md[1], 10) - 1;
+    const day = parseInt(md[2], 10);
+    const year = new Date().getFullYear();
+    const d = new Date(year, month, day);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  return null;
+}
+
+function displayDate(dateStr: string): string {
+  if (!dateStr) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr.replace(/-/g, "/");
+  return dateStr;
 }
 
 type DateGroup = "today" | "tomorrow" | "this-week" | "later" | "none";
@@ -134,7 +152,7 @@ function ReminderCard({
 
         {/* Meta row */}
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500 mb-1.5">
-          {reminder.date && <span>{reminder.date}</span>}
+          {reminder.date && <span>{displayDate(reminder.date)}</span>}
           {reminder.startTime && <span>{reminder.startTime}</span>}
           {reminder.location && <span>{reminder.location}</span>}
         </div>

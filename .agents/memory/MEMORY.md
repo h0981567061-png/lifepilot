@@ -1,0 +1,1 @@
+- [Time/date normalization](time-date-normalization.md) — normalizeTime/normalizeDate in utils.ts; always normalize before storing or displaying, never raw-slice time strings.

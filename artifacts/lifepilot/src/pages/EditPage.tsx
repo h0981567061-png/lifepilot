@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Reminder } from "../store";
+import { normalizeDate } from "../utils";
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
 
@@ -120,7 +121,7 @@ export function EditPage({
 }) {
   // ── Common fields ──
   const [title, setTitle] = useState(reminder.title);
-  const [date, setDate] = useState(reminder.date);
+  const [date, setDate] = useState(normalizeDate(reminder.date));
   const [startTime, setStartTime] = useState(reminder.startTime);
   const [endTime, setEndTime] = useState(reminder.endTime);
   const [location, setLocation] = useState(reminder.location);
@@ -138,7 +139,7 @@ export function EditPage({
   const [newItem, setNewItem] = useState("");
 
   // ── Payment ──
-  const [dueDate, setDueDate] = useState(reminder.dueDate ?? "");
+  const [dueDate, setDueDate] = useState(normalizeDate(reminder.dueDate ?? ""));
   const [amount, setAmount] = useState(reminder.amount ?? "");
 
   // ── Medical ──
@@ -209,7 +210,13 @@ export function EditPage({
         <TextInput value={title} onChange={setTitle} placeholder="事項標題" />
       </FieldRow>
       <FieldRow label="日期">
-        <TextInput value={date} onChange={setDate} placeholder="M/D，如 7/15" />
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="w-full bg-transparent text-sm text-white focus:outline-none"
+          style={{ colorScheme: "dark" }}
+        />
       </FieldRow>
       <FieldRow label="開始時間">
         <TextInput value={startTime} onChange={setStartTime} placeholder="HH:MM，如 09:00" />
@@ -313,7 +320,13 @@ export function EditPage({
         <>
           <SectionLabel>付款資訊</SectionLabel>
           <FieldRow label="截止日期">
-            <TextInput value={dueDate} onChange={setDueDate} placeholder="M/D，如 8/5" />
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="w-full bg-transparent text-sm text-white focus:outline-none"
+              style={{ colorScheme: "dark" }}
+            />
           </FieldRow>
           <FieldRow label="金額">
             <TextInput value={amount} onChange={setAmount} placeholder="如 23560" />

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { isAIConfigured, parseWithAI, type AIEvent } from "./aiParser";
+import { normalizeTime, normalizeDate } from "./utils";
 import {
   addReminders,
   deleteReminder,
@@ -193,6 +194,7 @@ function parseEvents(text: string): Event[] {
 
 interface AirportTransfer {
   id: number;
+  date: string;    // YYYY-MM-DD or ""
   time: string;
   flight: string;
   type: string;    // 接機 | 送機 | ""
@@ -327,6 +329,7 @@ function parseAirportTransfers(text: string): AirportTransfer[] {
 
       return {
         id: idx + 1,
+        date: "",
         time,
         flight:   state.flight,
         type:     state.type,
@@ -756,9 +759,11 @@ function accentCheckbox(color: string) {
 function EventCard({
   event,
   onToggle,
+  onDateChange,
 }: {
   event: Event;
   onToggle: (id: number) => void;
+  onDateChange: (id: number, date: string) => void;
 }) {
   return (
     <div
@@ -778,10 +783,21 @@ function EventCard({
       />
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-white leading-snug">{event.title}</p>
-        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-sm">
-          <span className={event.date ? "text-gray-400" : "italic text-gray-600"}>
-            {event.date || "無日期"}
-          </span>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
+            {!event.date && (
+              <span className="text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                ⚠ 無日期
+              </span>
+            )}
+            <input
+              type="date"
+              value={normalizeDate(event.date)}
+              onChange={(e) => onDateChange(event.id, e.target.value)}
+              className="text-xs rounded-lg px-2 py-0.5 bg-white/5 border border-white/10 text-gray-300 focus:outline-none focus:border-blue-500/50"
+              style={{ colorScheme: "dark" }}
+            />
+          </div>
           <span className={event.time ? "text-gray-400" : "italic text-gray-600"}>
             {event.time || "無時間"}
           </span>
@@ -813,9 +829,11 @@ function Field({ label, value, labelColor = "text-amber-400/70" }: {
 function AirportTransferCard({
   transfer,
   onToggle,
+  onDateChange,
 }: {
   transfer: AirportTransfer;
   onToggle: (id: number) => void;
+  onDateChange: (id: number, date: string) => void;
 }) {
   const typeColor =
     transfer.type === "接機"
@@ -823,6 +841,8 @@ function AirportTransferCard({
       : transfer.type === "送機"
       ? "bg-sky-500/15 text-sky-300 border-sky-500/30"
       : "bg-white/5 text-gray-400 border-white/10";
+
+  const displayTime = normalizeTime(transfer.time) || transfer.time;
 
   return (
     <div
@@ -843,7 +863,7 @@ function AirportTransferCard({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-3 flex-wrap mb-2">
           <span className="text-xl font-bold text-amber-300 tracking-widest">
-            {transfer.time.slice(0, 2)}:{transfer.time.slice(2)}
+            {displayTime}
           </span>
           {transfer.type && (
             <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${typeColor}`}>
@@ -855,6 +875,24 @@ function AirportTransferCard({
               {transfer.flight}
             </span>
           )}
+        </div>
+        <div className="flex items-center gap-2 mb-2" onClick={(e) => e.stopPropagation()}>
+          {!transfer.date && (
+            <span className="text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/25 px-2 py-0.5 rounded-full whitespace-nowrap">
+              ⚠ 尚未設定日期
+            </span>
+          )}
+          <input
+            type="date"
+            value={transfer.date}
+            onChange={(e) => onDateChange(transfer.id, e.target.value)}
+            className={`text-xs rounded-lg px-2 py-1 bg-white/5 border transition-colors focus:outline-none focus:border-blue-500/50 ${
+              transfer.date
+                ? "text-gray-300 border-white/10"
+                : "text-gray-500 border-amber-500/30 hover:border-amber-500/50"
+            }`}
+            style={{ colorScheme: "dark" }}
+          />
         </div>
         <div className="flex flex-col gap-1">
           <Field label="地區" value={transfer.district} />
@@ -875,9 +913,11 @@ function AirportTransferCard({
 function MedicalCard({
   item,
   onToggle,
+  onDateChange,
 }: {
   item: MedicalItem;
   onToggle: (id: number) => void;
+  onDateChange: (id: number, date: string) => void;
 }) {
   return (
     <div
@@ -904,10 +944,21 @@ function MedicalCard({
             </span>
           )}
         </p>
-        <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm">
-          <span className={item.date ? "text-gray-400" : "italic text-gray-600"}>
-            {item.date || "無日期"}
-          </span>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
+            {!item.date && (
+              <span className="text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                ⚠ 無日期
+              </span>
+            )}
+            <input
+              type="date"
+              value={normalizeDate(item.date)}
+              onChange={(e) => onDateChange(item.id, e.target.value)}
+              className="text-xs rounded-lg px-2 py-0.5 bg-white/5 border border-white/10 text-gray-300 focus:outline-none focus:border-blue-500/50"
+              style={{ colorScheme: "dark" }}
+            />
+          </div>
           <span className={item.time ? "text-gray-400" : "italic text-gray-600"}>
             {item.time || "無時間"}
           </span>
@@ -927,9 +978,11 @@ function MedicalCard({
 function ShoppingCard({
   item,
   onToggle,
+  onDateChange,
 }: {
   item: ShoppingItem;
   onToggle: (id: number) => void;
+  onDateChange: (id: number, date: string) => void;
 }) {
   return (
     <div
@@ -948,13 +1001,22 @@ function ShoppingCard({
         className="mt-0.5 w-4 h-4 rounded accent-purple-500 cursor-pointer shrink-0"
       />
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
           <p className="font-semibold text-white leading-snug">購物清單</p>
-          {item.date && (
-            <span className="text-xs text-purple-300/80 bg-purple-500/10 px-1.5 py-0.5 rounded">
-              {item.date}
-            </span>
-          )}
+          <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
+            {!item.date && (
+              <span className="text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                ⚠ 無日期
+              </span>
+            )}
+            <input
+              type="date"
+              value={normalizeDate(item.date)}
+              onChange={(e) => onDateChange(item.id, e.target.value)}
+              className="text-xs rounded-lg px-2 py-0.5 bg-white/5 border border-white/10 text-gray-300 focus:outline-none focus:border-blue-500/50"
+              style={{ colorScheme: "dark" }}
+            />
+          </div>
         </div>
         <ul className="text-sm text-gray-300 space-y-0.5 list-none">
           {item.lines.map((l, i) => (
@@ -977,9 +1039,11 @@ function ShoppingCard({
 function PaymentCard({
   item,
   onToggle,
+  onDueDateChange,
 }: {
   item: PaymentItem;
   onToggle: (id: number) => void;
+  onDueDateChange: (id: number, date: string) => void;
 }) {
   return (
     <div
@@ -1001,8 +1065,17 @@ function PaymentCard({
         <p className="font-semibold text-white leading-snug mb-2">
           {item.name || "付款提醒"}
         </p>
-        <div className="flex flex-col gap-1">
-          <Field label="到期" value={item.dueDate}  labelColor="text-emerald-400/70" />
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <span className="text-emerald-400/70 text-sm shrink-0 w-14 text-right">到期</span>
+            <input
+              type="date"
+              value={normalizeDate(item.dueDate)}
+              onChange={(e) => onDueDateChange(item.id, e.target.value)}
+              className="text-xs rounded-lg px-2 py-0.5 bg-white/5 border border-white/10 text-gray-300 focus:outline-none focus:border-blue-500/50"
+              style={{ colorScheme: "dark" }}
+            />
+          </div>
           <Field label="金額" value={item.amount}   labelColor="text-emerald-400/70" />
           <Field label="帳號" value={item.account}  labelColor="text-emerald-400/70" />
           <Field label="備註" value={item.notes}    labelColor="text-emerald-400/70" />
@@ -1116,11 +1189,16 @@ export default function App() {
   const [calendarItems, setCalendarItems] = useState<CalendarItem[]>([]);
   const [analyzed, setAnalyzed] = useState(false);
   const [error, setError] = useState("");
-  const [aiMode, setAiMode] = useState(false);
+  const [aiMode, setAiMode] = useState(true);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSource, setAiSource] = useState<"ai" | "rule" | null>(null);
   const [activePage, setActivePage] = useState<"add" | "reminders" | "pending">("add");
   const [savedReminders, setSavedReminders] = useState<Reminder[]>(() => loadReminders());
+  const [bulkDatePickerOpen, setBulkDatePickerOpen] = useState(false);
+  const [bulkDateValue, setBulkDateValue] = useState("");
+  const [bulkConfirmNeeded, setBulkConfirmNeeded] = useState<"none" | "has-dates">("none");
+  const [createConfirmPending, setCreateConfirmPending] = useState(false);
+  const [missingDateCount, setMissingDateCount] = useState(0);
 
   function handleDeleteReminder(id: string) {
     setSavedReminders(deleteReminder(id));
@@ -1150,6 +1228,50 @@ export default function App() {
     if (!editingReminderId) return;
     setSavedReminders(deleteReminder(editingReminderId));
     setEditingReminderId(null);
+  }
+
+  function handleTransferDateChange(id: number, date: string) {
+    setTransfers((prev) => prev.map((t) => (t.id === id ? { ...t, date } : t)));
+  }
+  function handleEventDateChange(id: number, date: string) {
+    setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, date } : e)));
+  }
+  function handleMedicalDateChange(id: number, date: string) {
+    setMedicalItems((prev) => prev.map((m) => (m.id === id ? { ...m, date } : m)));
+  }
+  function handleShoppingDateChange(id: number, date: string) {
+    setShoppingItems((prev) => prev.map((s) => (s.id === id ? { ...s, date } : s)));
+  }
+  function handlePaymentDueDateChange(id: number, date: string) {
+    setPaymentItems((prev) => prev.map((p) => (p.id === id ? { ...p, dueDate: date } : p)));
+  }
+
+  function handleBulkApply(mode: "all" | "missing-only") {
+    if (!bulkDateValue) return;
+    const apply = (current: string) =>
+      mode === "all" || !current ? bulkDateValue : current;
+    setTransfers((prev) => prev.map((t) => (t.selected ? { ...t, date: apply(t.date) } : t)));
+    setEvents((prev) => prev.map((e) => (e.keepInLifePilot ? { ...e, date: apply(e.date) } : e)));
+    setMedicalItems((prev) => prev.map((m) => (m.selected ? { ...m, date: apply(m.date) } : m)));
+    setShoppingItems((prev) => prev.map((s) => (s.selected ? { ...s, date: apply(s.date) } : s)));
+    setBulkDatePickerOpen(false);
+    setBulkDateValue("");
+    setBulkConfirmNeeded("none");
+  }
+
+  function handleBulkApplyClick() {
+    if (!bulkDateValue) return;
+    const hasExisting = [
+      ...transfers.filter((t) => t.selected && t.date),
+      ...events.filter((e) => e.keepInLifePilot && e.date),
+      ...medicalItems.filter((m) => m.selected && m.date),
+      ...shoppingItems.filter((s) => s.selected && s.date),
+    ].length > 0;
+    if (hasExisting) {
+      setBulkConfirmNeeded("has-dates");
+    } else {
+      handleBulkApply("all");
+    }
   }
 
   function resetParsed() {
@@ -1222,6 +1344,7 @@ export default function App() {
         case "Airport Transfer":
           parsedTransfers.push({
             id: trIdx++,
+            date: normalizeDate(e.date ?? ""),
             time: e.startTime ?? "",
             flight: e.flightNumber ?? "",
             type: e.transferType ?? "",
@@ -1435,7 +1558,7 @@ export default function App() {
       for (const e of events.filter((ev) => ev.keepInLifePilot)) {
         results.push({
           id: uid(), type: "Course", completed: false, createdAt: now,
-          title: e.title, date: e.date, startTime: e.time, endTime: "",
+          title: e.title, date: normalizeDate(e.date), startTime: normalizeTime(e.time), endTime: "",
           location: e.location, notes: "",
         });
       }
@@ -1445,7 +1568,7 @@ export default function App() {
         results.push({
           id: uid(), type: "Airport Transfer", completed: false, createdAt: now,
           title: [t.type, t.flight].filter(Boolean).join(" ") || "接送機",
-          date: "", startTime: t.time, endTime: "",
+          date: normalizeDate(t.date), startTime: normalizeTime(t.time), endTime: "",
           location: t.district, notes: t.notes,
           flightNumber: t.flight, transferType: t.type,
           district: t.district, vehicleType: t.vehicle, price: t.price,
@@ -1457,7 +1580,7 @@ export default function App() {
         results.push({
           id: uid(), type: "Medical", completed: false, createdAt: now,
           title: [m.hospital, m.department].filter(Boolean).join(" ") || "醫療預約",
-          date: m.date, startTime: m.time, endTime: "",
+          date: normalizeDate(m.date), startTime: normalizeTime(m.time), endTime: "",
           location: m.hospital, notes: m.notes,
           hospital: m.hospital, department: m.department,
         });
@@ -1467,7 +1590,7 @@ export default function App() {
       for (const s of shoppingItems.filter((si) => si.selected)) {
         results.push({
           id: uid(), type: "Shopping", completed: false, createdAt: now,
-          title: "購物清單", date: s.date, startTime: "", endTime: "",
+          title: "購物清單", date: normalizeDate(s.date), startTime: "", endTime: "",
           location: "", notes: "",
           shoppingItems: s.lines, amount: s.amount,
         });
@@ -1478,9 +1601,9 @@ export default function App() {
         results.push({
           id: uid(), type: "Payment", completed: false, createdAt: now,
           title: p.name || "付款提醒",
-          date: p.dueDate, startTime: "", endTime: "",
+          date: normalizeDate(p.dueDate), startTime: "", endTime: "",
           location: "", notes: p.notes,
-          dueDate: p.dueDate, amount: p.amount,
+          dueDate: normalizeDate(p.dueDate), amount: p.amount,
         });
       }
     }
@@ -1497,7 +1620,7 @@ export default function App() {
     return results;
   }
 
-  function handleCreate() {
+  function doCreate() {
     const newItems = buildNewReminders();
     if (newItems.length === 0) return;
     const updated = addReminders(newItems);
@@ -1507,6 +1630,22 @@ export default function App() {
     setMessage("");
     resetParsed();
     setAiSource(null);
+    setBulkDatePickerOpen(false);
+    setBulkDateValue("");
+    setBulkConfirmNeeded("none");
+    setCreateConfirmPending(false);
+  }
+
+  function handleCreate() {
+    const newItems = buildNewReminders();
+    if (newItems.length === 0) return;
+    const missing = newItems.filter((r) => !r.date).length;
+    if (missing > 0) {
+      setMissingDateCount(missing);
+      setCreateConfirmPending(true);
+      return;
+    }
+    doCreate();
   }
 
   // ── Derived counts ──
@@ -1548,17 +1687,12 @@ export default function App() {
 
   const accentColor = detectionResult?.color ?? "blue";
 
-  const PLACEHOLDER = `美術班 7/30
-復旦國小
-（時間09點-12點）
+  const PLACEHOLDER = `明天下午3點到桃園榮總看骨科，
+回家前買牛奶、雞蛋和衛生紙，
+信用卡8月5日前要繳23560元。
 
-福爾 7/21
-平鎮分局
-（時間09點-12點）
-
-桌球7/20-7/24
-平興國小
-（時間14點-17點）`;
+也可以直接貼上 LINE 訊息、課程通知、
+接送工作、付款資訊或其他生活事項。`;
 
   // ── Labels per type ──
   const typeLabel: Record<MessageTypeName, string> = {
@@ -1621,26 +1755,13 @@ export default function App() {
             <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${aiMode ? "bg-blue-500/20 text-blue-300" : "bg-white/10 text-gray-500"}`}>
               {aiMode ? "開啟" : "關閉"}
             </span>
-            {aiMode && !isAIConfigured() && (
-              <span className="text-amber-400/70 text-xs ml-1">（需設定）</span>
-            )}
           </button>
         </div>
 
-        {aiMode && !isAIConfigured() && (
-          <div className="mt-3 text-sm text-amber-400/80 bg-amber-500/5 border border-amber-500/20 rounded-xl px-4 py-3">
-            <p className="font-medium mb-1">啟用 AI 解析需要設定 API 金鑰</p>
-            <p className="text-amber-400/60 text-xs leading-relaxed">
-              在 Replit Secrets 新增{" "}
-              <code className="bg-amber-500/10 px-1.5 py-0.5 rounded font-mono">VITE_OPENAI_API_KEY</code>，
-              重新載入頁面後即可啟用真正的 AI 解析。
-            </p>
-          </div>
-        )}
 
         <button
           onClick={handleAnalyze}
-          disabled={aiLoading}
+          disabled={aiLoading || !message.trim()}
           className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:bg-blue-600/40 disabled:cursor-not-allowed text-white font-semibold text-base transition-all duration-150 shadow-lg shadow-blue-600/20 mt-4 mb-10"
         >
           {aiLoading ? "AI 解析中…" : "Analyze"}
@@ -1716,22 +1837,85 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* ── Bulk date apply ── */}
+                <div className="mb-4">
+                  {!bulkDatePickerOpen ? (
+                    <button
+                      onClick={() => setBulkDatePickerOpen(true)}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 text-gray-400 hover:text-gray-300 transition-all"
+                    >
+                      📅 全部套用日期
+                    </button>
+                  ) : (
+                    <div className="flex flex-col gap-3 p-4 rounded-xl border border-white/10 bg-white/5">
+                      <p className="text-sm font-semibold text-white">套用日期到已選取事項</p>
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="date"
+                          value={bulkDateValue}
+                          onChange={(e) => { setBulkDateValue(e.target.value); setBulkConfirmNeeded("none"); }}
+                          className="flex-1 text-sm rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white focus:outline-none focus:border-blue-500/50"
+                          style={{ colorScheme: "dark" }}
+                        />
+                        <button
+                          onClick={handleBulkApplyClick}
+                          disabled={!bulkDateValue}
+                          className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm font-medium transition-all"
+                        >
+                          套用
+                        </button>
+                        <button
+                          onClick={() => { setBulkDatePickerOpen(false); setBulkConfirmNeeded("none"); }}
+                          className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-400 text-sm transition-all"
+                        >
+                          取消
+                        </button>
+                      </div>
+                      {bulkConfirmNeeded === "has-dates" && (
+                        <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
+                          <p className="text-sm text-amber-300 mb-2">部分已選事項已有日期，要如何套用？</p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleBulkApply("missing-only")}
+                              className="flex-1 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 text-xs font-medium"
+                            >
+                              只套用無日期事項
+                            </button>
+                            <button
+                              onClick={() => handleBulkApply("all")}
+                              className="flex-1 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-medium"
+                            >
+                              全部覆蓋
+                            </button>
+                            <button
+                              onClick={() => setBulkConfirmNeeded("none")}
+                              className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-400 text-xs"
+                            >
+                              取消
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {/* Cards — in AI mode render every populated type */}
                 <div className="flex flex-col gap-3 mb-8">
                   {(parserType === "Airport Transfer" || aiSource === "ai") && transfers.length > 0 && transfers.map((t) => (
-                    <AirportTransferCard key={t.id} transfer={t} onToggle={handleToggleTransfer} />
+                    <AirportTransferCard key={t.id} transfer={t} onToggle={handleToggleTransfer} onDateChange={handleTransferDateChange} />
                   ))}
                   {(parserType === "Course" || aiSource === "ai") && events.length > 0 && events.map((e) => (
-                    <EventCard key={e.id} event={e} onToggle={handleToggleEvent} />
+                    <EventCard key={e.id} event={e} onToggle={handleToggleEvent} onDateChange={handleEventDateChange} />
                   ))}
                   {(parserType === "Medical" || aiSource === "ai") && medicalItems.length > 0 && medicalItems.map((m) => (
-                    <MedicalCard key={m.id} item={m} onToggle={handleToggleMedical} />
+                    <MedicalCard key={m.id} item={m} onToggle={handleToggleMedical} onDateChange={handleMedicalDateChange} />
                   ))}
                   {(parserType === "Shopping" || aiSource === "ai") && shoppingItems.length > 0 && shoppingItems.map((s) => (
-                    <ShoppingCard key={s.id} item={s} onToggle={handleToggleShopping} />
+                    <ShoppingCard key={s.id} item={s} onToggle={handleToggleShopping} onDateChange={handleShoppingDateChange} />
                   ))}
                   {(parserType === "Payment" || aiSource === "ai") && paymentItems.length > 0 && paymentItems.map((p) => (
-                    <PaymentCard key={p.id} item={p} onToggle={handleTogglePayment} />
+                    <PaymentCard key={p.id} item={p} onToggle={handleTogglePayment} onDueDateChange={handlePaymentDueDateChange} />
                   ))}
                   {(parserType === "Pending" || aiSource === "ai") && pendingItems.length > 0 && pendingItems.map((p) => (
                     <PendingCard key={p.id} item={p} onToggle={handleTogglePending} />
@@ -1746,6 +1930,27 @@ export default function App() {
                 >
                   建立所選（{selectedCount}）
                 </button>
+                {createConfirmPending && (
+                  <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+                    <p className="text-sm text-amber-300 font-semibold mb-3">
+                      有 {missingDateCount} 個事項尚未設定日期，是否仍要建立？
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setCreateConfirmPending(false)}
+                        className="flex-1 py-2.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 text-sm font-medium transition-all"
+                      >
+                        返回設定日期
+                      </button>
+                      <button
+                        onClick={doCreate}
+                        className="flex-1 py-2.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-sm font-medium transition-all"
+                      >
+                        仍然建立
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* ── Apple Reminders preview (Course only) ── */}
                 {reminderItems.length > 0 && (
