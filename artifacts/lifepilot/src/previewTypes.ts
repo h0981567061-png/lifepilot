@@ -93,6 +93,8 @@ export interface PreviewItem {
   allDay: boolean;
   location: string;
   notes: string;
+  // Financial items created in the add flow (saved to Reminder on create)
+  financialItems?: import("./store").FinancialItem[];
   // Airport Transfer
   flightNumber: string;
   transferType: string;   // 接機 | 送機

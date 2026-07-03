@@ -1129,6 +1129,7 @@ export default function App() {
       financialStatus: item.financialStatus !== "none" ? item.financialStatus : undefined,
       expectedAmount: item.expectedAmount,
       financialDueDate: item.financialDueDate || undefined,
+      financialItems: item.financialItems?.length ? item.financialItems : undefined,
     }));
   }
 

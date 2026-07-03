@@ -9,6 +9,8 @@ import {
 import { normalizeDate, normalizeTime } from "../utils";
 import { ReminderEditor } from "./ReminderEditor";
 import { TimePicker } from "./TimePicker";
+import { CategorySelect } from "./CategorySelect";
+import type { FinancialItem } from "../store";
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
@@ -230,16 +232,19 @@ function TypeSpecificEditor({ draft, setDraft }: EditorProps) {
       return (
         <>
           <FormRow label="方向">
-            <select
-              value={draft.transferType}
-              onChange={(e) => upd({ transferType: e.target.value })}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
-              style={{ colorScheme: "dark" }}
-            >
-              <option value="">未指定</option>
-              <option value="接機">接機</option>
-              <option value="送機">送機</option>
-            </select>
+            <div className="flex gap-2 flex-wrap">
+              {(["接機", "送機", "未指定"] as const).map((opt) => {
+                const val = opt === "未指定" ? "" : opt;
+                return (
+                  <button key={opt} type="button" onClick={() => upd({ transferType: val })}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                      draft.transferType === val
+                        ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                        : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
+                    }`}>{opt}</button>
+                );
+              })}
+            </div>
           </FormRow>
           <FormRow label="航班">
             <TextInput
@@ -422,6 +427,71 @@ function TypeSpecificEditor({ draft, setDraft }: EditorProps) {
   }
 }
 
+// ─── FinancialItemQuickAdd ───────────────────────────────────────────────────────
+
+function FinancialItemQuickAdd({
+  onAdd, onCancel,
+}: {
+  onAdd: (fi: FinancialItem) => void;
+  onCancel: () => void;
+}) {
+  const [fiType,   setFiType]   = useState<"receivable"|"payable">("receivable");
+  const [fiAmount, setFiAmount] = useState("");
+  const [fiDate,   setFiDate]   = useState("");
+  const [fiNote,   setFiNote]   = useState("");
+  const canSave = parseFloat(fiAmount.replace(/,/g, "")) > 0;
+
+  function handleAdd() {
+    const amt = parseFloat(fiAmount.replace(/,/g, ""));
+    if (isNaN(amt) || amt <= 0) return;
+    onAdd({
+      id: crypto.randomUUID(),
+      type: fiType,
+      title: "",
+      amount: amt,
+      dueDate: fiDate || undefined,
+      note: fiNote.trim() || undefined,
+    });
+  }
+
+  return (
+    <div className="rounded-xl bg-white/[0.04] border border-white/10 p-3 space-y-2">
+      <div className="flex gap-2">
+        {([["receivable","待收","bg-teal-500/20 text-teal-300 border-teal-500/40"],
+           ["payable",  "待付","bg-rose-500/20 text-rose-300 border-rose-500/40"]] as const).map(([k,l,cls]) => (
+          <button key={k} type="button" onClick={() => setFiType(k)}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all ${fiType === k ? cls : "bg-white/5 text-gray-400 border-white/10"}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+        <span className="text-gray-500 text-xs shrink-0">NT$</span>
+        <input type="text" inputMode="decimal" value={fiAmount}
+          onChange={(e) => setFiAmount(e.target.value)} placeholder="金額"
+          className="flex-1 bg-transparent text-white text-sm focus:outline-none placeholder-gray-700" />
+      </div>
+      <input type="date" value={fiDate} onChange={(e) => setFiDate(e.target.value)}
+        placeholder="截止日期（選填）"
+        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+        style={{ colorScheme: "dark" }} />
+      <input type="text" value={fiNote} onChange={(e) => setFiNote(e.target.value)}
+        placeholder="備註（選填）"
+        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none" />
+      <div className="flex gap-2 pt-0.5">
+        <button type="button" onClick={handleAdd} disabled={!canSave}
+          className="flex-1 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold disabled:opacity-40 transition-all">
+          新增
+        </button>
+        <button type="button" onClick={onCancel}
+          className="flex-1 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-300 text-xs font-semibold">
+          取消
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ─────────────────────────────────────────────────────────────
 
 export function PreviewItemCard({
@@ -442,14 +512,15 @@ export function PreviewItemCard({
     onEdit();
   };
 
-  const showTimeFields = !["Payment", "Shopping"].includes(draft.type);
-  const showEndTime   = ["Course", "Work", "Family", "General"].includes(draft.type);
-  const showLocation  = !["Income", "Expense", "Payment", "Medical", "Airport Transfer"].includes(draft.type);
+  const [timeMode, setTimeMode] = useState<"allday" | "single" | "range">(() => {
+    if (item.allDay) return "allday";
+    if (item.endTime) return "range";
+    return "single";
+  });
+  const [showAddFi, setShowAddFi] = useState(false);
 
-  function handleAllDayToggle() {
-    const next = !draft.allDay;
-    upd({ allDay: next, startTime: next ? "" : draft.startTime, endTime: next ? "" : draft.endTime });
-  }
+  const showTimeFields = !["Payment", "Shopping"].includes(draft.type);
+  const showLocation   = !["Income", "Expense", "Payment", "Medical", "Airport Transfer"].includes(draft.type);
 
   // ── Display mode ────────────────────────────────────────────────────────────
   if (!isEditing) {
@@ -518,6 +589,15 @@ export function PreviewItemCard({
           </FormRow>
         )}
 
+        {/* 群組 */}
+        <FormRow label="群組">
+          <CategorySelect
+            type={draft.type}
+            value={draft.category}
+            onChange={(v) => upd({ category: v })}
+          />
+        </FormRow>
+
         {/* Date (Payment has its own date row inside TypeSpecificEditor) */}
         {draft.type !== "Payment" && (
           <FormRow label="日期">
@@ -531,21 +611,37 @@ export function PreviewItemCard({
           </FormRow>
         )}
 
-        {/* Time — full-day toggle + optional start/end inputs */}
+        {/* Time — mode buttons + time pickers */}
         {showTimeFields && (
           <FormRow label="時間">
-            <div className="flex items-center gap-2 flex-wrap">
-              <AllDayToggle allDay={draft.allDay} onToggle={handleAllDayToggle} />
-              {!draft.allDay && (
-                <>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                {(["allday", "single", "range"] as const).map((m) => (
+                  <button key={m} type="button"
+                    onClick={() => {
+                      setTimeMode(m);
+                      if (m === "allday")  upd({ allDay: true,  startTime: "", endTime: "" });
+                      else if (m === "single") upd({ allDay: false, endTime: "" });
+                      else upd({ allDay: false });
+                    }}
+                    className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
+                      timeMode === m
+                        ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
+                        : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
+                    }`}>
+                    {m === "allday" ? "全天" : m === "single" ? "單一時間" : "時間區間"}
+                  </button>
+                ))}
+              </div>
+              {timeMode === "single" && (
+                <TimePicker value={draft.startTime} onChange={(v) => upd({ startTime: v })} />
+              )}
+              {timeMode === "range" && (
+                <div className="flex items-center gap-2 flex-wrap">
                   <TimePicker value={draft.startTime} onChange={(v) => upd({ startTime: v })} />
-                  {showEndTime && (
-                    <>
-                      <span className="text-gray-500 text-xs shrink-0">—</span>
-                      <TimePicker value={draft.endTime} onChange={(v) => upd({ endTime: v })} />
-                    </>
-                  )}
-                </>
+                  <span className="text-gray-500 text-xs shrink-0">～</span>
+                  <TimePicker value={draft.endTime} onChange={(v) => upd({ endTime: v })} />
+                </div>
               )}
             </div>
           </FormRow>
@@ -588,6 +684,45 @@ export function PreviewItemCard({
             multiline
           />
         </FormRow>
+
+        {/* Finance — FinancialItems only (Finance Records created after saving) */}
+        {!["Pending", "Income", "Expense"].includes(draft.type) && (
+          <FormRow label="收支">
+            <div className="space-y-2">
+              {(draft.financialItems ?? []).map((fi) => (
+                <div key={fi.id} className="flex items-center gap-2 py-2 px-3 rounded-lg bg-white/[0.04] border border-white/8">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium shrink-0 ${
+                    fi.type === "receivable"
+                      ? "bg-teal-500/15 text-teal-300 border-teal-500/25"
+                      : "bg-rose-500/15 text-rose-300 border-rose-500/25"
+                  }`}>
+                    {fi.type === "receivable" ? "待收" : "待付"}
+                  </span>
+                  <span className="flex-1 text-sm text-white tabular-nums">NT$ {fi.amount.toLocaleString()}</span>
+                  {fi.dueDate && <span className="text-xs text-gray-500">{fi.dueDate.replace(/-/g, "/")}</span>}
+                  <button type="button"
+                    onClick={() => upd({ financialItems: (draft.financialItems ?? []).filter((i) => i.id !== fi.id) })}
+                    className="text-gray-500 hover:text-red-400 transition-colors text-xs px-1">✕</button>
+                </div>
+              ))}
+
+              {showAddFi ? (
+                <FinancialItemQuickAdd
+                  onAdd={(fi) => {
+                    upd({ financialItems: [...(draft.financialItems ?? []), fi] });
+                    setShowAddFi(false);
+                  }}
+                  onCancel={() => setShowAddFi(false)}
+                />
+              ) : (
+                <button type="button" onClick={() => setShowAddFi(true)}
+                  className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors py-1">
+                  ＋ 新增款項
+                </button>
+              )}
+            </div>
+          </FormRow>
+        )}
 
         {/* Action buttons */}
         <div className="flex gap-2 pt-1">

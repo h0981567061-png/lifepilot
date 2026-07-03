@@ -563,9 +563,11 @@ export function EditPage({
   const [transferType,  setTransferType]  = useState(reminder.transferType ?? "");
   const [district,      setDistrict]      = useState(reminder.district ?? "");
   const [vehicleType,   setVehicleType]   = useState(reminder.vehicleType ?? "");
+  const [price,         setPrice]         = useState(reminder.price ?? "");
   const [shoppingItems, setShoppingItems] = useState<string[]>(reminder.shoppingItems ?? []);
   const [newItem,       setNewItem]       = useState("");
   const [account,       setAccount]       = useState(reminder.account ?? "");
+  const [paymentDueDate, setPaymentDueDate] = useState(reminder.dueDate ?? "");
   const [hospital,      setHospital]      = useState(reminder.hospital ?? "");
   const [department,    setDepartment]    = useState(reminder.department ?? "");
   const [source,        setSource]        = useState(reminder.source ?? "");
@@ -807,7 +809,7 @@ export function EditPage({
     const firstReceivable = financialItems.find(i => i.type === "receivable");
 
     const savedAmount = (() => {
-      if (isPayment)  return String(firstPayable?.amount ?? "");
+      if (isPayment)  return incomeAmount || String(firstPayable?.amount ?? "");
       if (isAirport && firstReceivable) return String(firstReceivable.amount);
       if (isIncome || isExpense) return incomeAmount;
       return reminder.amount ?? "";
@@ -816,12 +818,12 @@ export function EditPage({
     onSave({
       title,
       date:    isPayment ? "" : date,
-      dueDate: isPayment ? (firstPayable?.dueDate || undefined) : undefined,
+      dueDate: isPayment ? (paymentDueDate || firstPayable?.dueDate || undefined) : undefined,
       startTime: timeMode !== "allday" ? startTime : "",
       endTime:   timeMode === "range"  ? endTime   : "",
       allDay:    timeMode === "allday",
       location, notes, category,
-      flightNumber, transferType, district, vehicleType,
+      flightNumber, transferType, district, vehicleType, price,
       shoppingItems,
       amount: savedAmount,
       account,
@@ -955,6 +957,9 @@ export function EditPage({
           <FieldRow label="車型">
             <TextInput value={vehicleType} onChange={setVehicleType} placeholder="如 轎車、廂型" />
           </FieldRow>
+          <FieldRow label="費用">
+            <TextInput value={price} onChange={setPrice} placeholder="金額（元）（選填）" />
+          </FieldRow>
         </>
       )}
 
@@ -990,6 +995,14 @@ export function EditPage({
       {isPayment && (
         <>
           <SectionLabel>付款資訊</SectionLabel>
+          <FieldRow label="截止日期">
+            <input type="date" value={paymentDueDate} onChange={(e) => setPaymentDueDate(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
+              style={{ colorScheme: "dark" }} />
+          </FieldRow>
+          <FieldRow label="金額">
+            <TextInput value={incomeAmount} onChange={setIncomeAmount} placeholder="原始金額（元）（選填）" />
+          </FieldRow>
           <FieldRow label="帳戶">
             <TextInput value={account} onChange={setAccount} placeholder="帳戶或繳費方式（選填）" />
           </FieldRow>
