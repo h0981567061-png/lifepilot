@@ -8,6 +8,7 @@ import {
   typeBadgeClass,
 } from "../previewTypes";
 import { normalizeDate, normalizeTime } from "../utils";
+import { ReminderEditor } from "./ReminderEditor";
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
@@ -563,6 +564,16 @@ export function PreviewItemCard({
             />
           </FormRow>
         )}
+
+        {/* Reminder notifications */}
+        <FormRow label="提醒">
+          <ReminderEditor
+            reminders={draft.reminders ?? []}
+            onChange={(updated) => upd({ reminders: updated })}
+            hasDate={draft.type === "Payment" ? !!draft.dueDate : !!draft.date}
+            hasTime={showTimeFields ? !!draft.startTime : false}
+          />
+        </FormRow>
 
         {/* Type-specific fields — keyed by type so local state resets on type switch */}
         <TypeSpecificEditor

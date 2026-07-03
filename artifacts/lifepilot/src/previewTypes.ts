@@ -1,4 +1,5 @@
 // ─── Unified Preview Item — used in the "新增" flow before saving ─────────────
+import type { ReminderNotification } from "./store";
 
 export type AllType =
   | "Course"
@@ -112,6 +113,8 @@ export interface PreviewItem {
   merchant: string;
   // Pending
   pendingText: string;
+  // Reminder notifications (set in inline editor before saving)
+  reminders: ReminderNotification[];
 }
 
 export function emptyPreviewItem(type: AllType = "General"): PreviewItem {
@@ -139,8 +142,11 @@ export function emptyPreviewItem(type: AllType = "General"): PreviewItem {
     source: "",
     merchant: "",
     pendingText: "",
+    reminders: [],
   };
 }
+
+export type { ReminderNotification };
 
 // ─── Color helpers ─────────────────────────────────────────────────────────────
 

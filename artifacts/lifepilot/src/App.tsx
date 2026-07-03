@@ -1100,6 +1100,7 @@ export default function App() {
       department: item.department,
       source: item.source,
       merchant: item.merchant,
+      reminders: item.reminders?.length ? item.reminders : undefined,
     }));
   }
 

@@ -7,6 +7,30 @@
 //   4. Replace `toggleReminderComplete` with PATCH /api/reminders/:id
 //   Keep the function signatures identical so callers need zero changes.
 
+// ─── Reminder Notification ───────────────────────────────────────────────────
+
+export type ReminderNotificationKind =
+  | "at-time"
+  | "before-10m"
+  | "before-30m"
+  | "before-1h"
+  | "before-2h"
+  | "day-before"
+  | "custom";
+
+export interface ReminderNotification {
+  id: string;
+  kind: ReminderNotificationKind;
+  /** HH:MM — only for kind="day-before" */
+  dayBeforeTime?: string;
+  /** only for kind="custom" */
+  customDays?: number;
+  customHours?: number;
+  customMinutes?: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export type ReminderType =
   | "Course"
   | "Airport Transfer"
@@ -52,12 +76,14 @@ export interface Reminder {
   source?: string;
   // Expense
   merchant?: string;
-  // Reminder settings (optional — existing items use defaults in EditPage)
+  // Legacy reminder settings (kept for backward compat — do not delete)
   reminderEnabled?: boolean;
   calendarEnabled?: boolean;
   sameDayReminder?: boolean;
   dayBeforeReminder?: boolean;
   hoursBeforeReminder?: number | null;
+  // New: structured reminder notifications (v2)
+  reminders?: ReminderNotification[];
 }
 
 const STORAGE_KEY = "lifepilot_reminders_v1";
