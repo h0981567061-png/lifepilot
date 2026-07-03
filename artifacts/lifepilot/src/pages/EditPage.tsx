@@ -11,8 +11,6 @@ import {
   saveFinanceEntries,
   type FinanceEntry,
   fmtCurrency,
-  FINANCE_INCOME_CATEGORIES,
-  FINANCE_EXPENSE_CATEGORIES,
 } from "../financeStore";
 
 // ── UI primitives ─────────────────────────────────────────────────────────────
@@ -23,10 +21,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
       {children}
     </p>
   );
-}
-
-function SubLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs text-gray-400 font-medium mt-3 mb-1.5">{children}</p>;
 }
 
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
@@ -169,10 +163,8 @@ function TimeField({
 // ─── Backward compat: derive FinancialItems from legacy fields ────────────────
 
 function deriveFinancialItems(r: Reminder): FinancialItem[] {
-  // Already has items — use as-is
   if (r.financialItems && r.financialItems.length > 0) return r.financialItems;
 
-  // Migrate from explicit financialStatus/expectedAmount (Task-010A.1/.2 data)
   if ((r.financialStatus === "receivable" || r.financialStatus === "payable") &&
       r.expectedAmount && r.expectedAmount > 0) {
     return [{
@@ -184,7 +176,6 @@ function deriveFinancialItems(r: Reminder): FinancialItem[] {
     }];
   }
 
-  // Payment backward compat (pre-Task-010A data: has amount/dueDate, no financialStatus)
   if (!r.financialStatus && r.type === "Payment" && r.amount) {
     const n = parseFloat(String(r.amount).replace(/,/g, ""));
     if (!isNaN(n) && n > 0) {
@@ -198,7 +189,6 @@ function deriveFinancialItems(r: Reminder): FinancialItem[] {
     }
   }
 
-  // AirportTransfer backward compat (has amount, no financialStatus)
   if (!r.financialStatus && r.type === "Airport Transfer" && r.amount) {
     const n = parseFloat(String(r.amount).replace(/,/g, ""));
     if (!isNaN(n) && n > 0) {
@@ -212,116 +202,6 @@ function deriveFinancialItems(r: Reminder): FinancialItem[] {
   }
 
   return [];
-}
-
-// helpers for defaultCategory and defaultFinanceAmount
-function defaultFinCategory(rType: string, finType: "income" | "expense"): string {
-  if (finType === "income") {
-    if (rType === "Airport Transfer") return "接送收入";
-    return "";
-  }
-  switch (rType) {
-    case "Medical":  return "醫療";
-    case "Shopping": return "購物";
-    case "Payment":  return "帳單";
-    case "Course":   return "工作";
-    default:         return "";
-  }
-}
-
-// ─── Financial Item inline form ───────────────────────────────────────────────
-
-function ItemForm({
-  type, title, amount, dueDate, note,
-  setType, setTitle, setAmount, setDueDate, setNote,
-  onSave, onCancel, saveLabel = "新增",
-}: {
-  type: "receivable" | "payable";
-  title: string; amount: string; dueDate: string; note: string;
-  setType: (v: "receivable" | "payable") => void;
-  setTitle: (v: string) => void;
-  setAmount: (v: string) => void;
-  setDueDate: (v: string) => void;
-  setNote: (v: string) => void;
-  onSave: () => void;
-  onCancel: () => void;
-  saveLabel?: string;
-}) {
-  const canSave = title.trim() !== "" && parseFloat(amount) > 0;
-  return (
-    <div className="rounded-xl bg-white/[0.04] border border-white/10 p-4 space-y-3 mb-2">
-      {/* Type */}
-      <div className="flex gap-2">
-        {([["receivable","待收","bg-teal-500/20 text-teal-300 border-teal-500/40"],
-           ["payable",  "待付","bg-rose-500/20 text-rose-300 border-rose-500/40"]] as const).map(([k, l, cls]) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => setType(k)}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-              type === k ? cls : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
-            }`}
-          >
-            {l}
-          </button>
-        ))}
-      </div>
-      {/* Name */}
-      <input
-        type="text"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="名稱（必填）"
-        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
-      />
-      {/* Amount */}
-      <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5">
-        <span className="text-gray-500 text-sm shrink-0">NT$</span>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="0"
-          className="flex-1 bg-transparent text-white text-sm font-semibold focus:outline-none placeholder-gray-700"
-        />
-      </div>
-      {/* Date */}
-      <input
-        type="date"
-        value={dueDate}
-        onChange={(e) => setDueDate(e.target.value)}
-        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
-        style={{ colorScheme: "dark" }}
-      />
-      {/* Note */}
-      <input
-        type="text"
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        placeholder="備註（選填）"
-        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none"
-      />
-      {/* Buttons */}
-      <div className="flex gap-2 pt-1">
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={!canSave}
-          className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-sm transition-colors"
-        >
-          {saveLabel}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 font-semibold text-sm"
-        >
-          取消
-        </button>
-      </div>
-    </div>
-  );
 }
 
 // ─── FinancialItemRow ─────────────────────────────────────────────────────────
@@ -339,11 +219,9 @@ function FinancialItemRow({
   const isReceivable = item.type === "receivable";
 
   if (isCompleted) {
-    // Completed display
     return (
-      <div className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0 opacity-70">
-        {/* Completed checkmark */}
-        <div className={`w-4 h-4 rounded-full shrink-0 flex items-center justify-center ${
+      <div className="flex items-start gap-3 py-2.5 border-b border-white/5 last:border-0 opacity-70">
+        <div className={`w-4 h-4 rounded-full shrink-0 flex items-center justify-center mt-0.5 ${
           isReceivable ? "bg-teal-500" : "bg-rose-400"
         }`}>
           <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 10" fill="none">
@@ -351,21 +229,19 @@ function FinancialItemRow({
           </svg>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
-              isReceivable
-                ? "bg-teal-500/10 text-teal-400/80 border-teal-500/20"
-                : "bg-rose-500/10 text-rose-300/80 border-rose-500/20"
-            }`}>
-              {isReceivable ? "✓ 已收" : "✓ 已付"}
-            </span>
-            <span className="text-sm text-gray-400 line-through">{item.title}</span>
-          </div>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
+            isReceivable
+              ? "bg-teal-500/10 text-teal-400/80 border-teal-500/20"
+              : "bg-rose-500/10 text-rose-300/80 border-rose-500/20"
+          }`}>
+            {isReceivable ? "✓ 已收" : "✓ 已付"}
+          </span>
           {item.completedDate && (
-            <p className="text-xs text-gray-600 mt-0.5">
-              {isReceivable ? "收款日期" : "付款日期"}：{item.completedDate}
+            <p className="text-xs text-gray-600 mt-1">
+              {isReceivable ? "收款" : "付款"}日期：{item.completedDate}
             </p>
           )}
+          {item.note && <p className="text-xs text-gray-600 mt-0.5">備註：{item.note}</p>}
         </div>
         <span className={`text-sm font-medium tabular-nums shrink-0 ${
           isReceivable ? "text-teal-400/70" : "text-rose-400/70"
@@ -377,58 +253,187 @@ function FinancialItemRow({
   }
 
   return (
-    <div className={`flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0 group ${
-      isConfirming ? "border-blue-500/20" : ""
+    <div className={`flex items-start gap-3 py-2.5 border-b border-white/5 last:border-0 group ${
+      isConfirming ? "" : ""
     }`}>
-      {/* Interactive circle — click to start confirm flow */}
       <button
         type="button"
         onClick={onStartConfirm}
         title={isReceivable ? "點擊確認收款" : "點擊確認付款"}
-        className={`w-4 h-4 rounded-full border-2 shrink-0 transition-all hover:scale-110 active:scale-95 ${
+        className={`w-4 h-4 rounded-full border-2 shrink-0 mt-0.5 transition-all hover:scale-110 active:scale-95 ${
           isReceivable
             ? "border-teal-500/60 hover:border-teal-400 hover:bg-teal-500/10"
             : "border-rose-400/60 hover:border-rose-300 hover:bg-rose-500/10"
         }`}
       />
-      {/* Badge + name + amount */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
-            isReceivable
-              ? "bg-teal-500/15 text-teal-300 border-teal-500/25"
-              : "bg-rose-500/15 text-rose-300 border-rose-500/25"
-          }`}>
-            {isReceivable ? "待收" : "待付"}
-          </span>
-          <span className="text-sm text-gray-200 truncate">{item.title}</span>
+        <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
+          isReceivable
+            ? "bg-teal-500/15 text-teal-300 border-teal-500/25"
+            : "bg-rose-500/15 text-rose-300 border-rose-500/25"
+        }`}>
+          {isReceivable ? "待收" : "待付"}
+        </span>
+        {item.dueDate && <p className="text-xs text-gray-600 mt-1">日期：{item.dueDate}</p>}
+        {item.note   && <p className="text-xs text-gray-600 mt-0.5">備註：{item.note}</p>}
+      </div>
+      <div className="flex flex-col items-end gap-1">
+        <span className={`text-sm font-medium tabular-nums ${
+          isReceivable ? "text-teal-400" : "text-rose-400"
+        }`}>
+          {fmtCurrency(item.amount)}
+        </span>
+        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button type="button" onClick={onEdit}
+            className="text-xs text-gray-500 hover:text-blue-400 transition-colors">編輯</button>
+          <button type="button" onClick={onDelete}
+            className="text-xs text-gray-500 hover:text-red-400 transition-colors">刪除</button>
         </div>
-        {item.dueDate && (
-          <p className="text-xs text-gray-600 mt-0.5">{item.dueDate}</p>
-        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── FinanceEntryRow ──────────────────────────────────────────────────────────
+
+function FinanceEntryRow({ entry }: { entry: FinanceEntry }) {
+  const isIncome = entry.type === "Income";
+  return (
+    <div className="flex items-start gap-3 py-2.5 border-b border-white/5 last:border-0">
+      <div className={`w-4 h-4 rounded-sm shrink-0 flex items-center justify-center mt-0.5 ${
+        isIncome ? "bg-teal-500/20" : "bg-orange-500/20"
+      }`}>
+        <span className={`text-[8px] font-bold leading-none ${isIncome ? "text-teal-400" : "text-orange-400"}`}>
+          {isIncome ? "收" : "支"}
+        </span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
+          isIncome
+            ? "bg-teal-500/15 text-teal-300 border-teal-500/25"
+            : "bg-orange-500/15 text-orange-300 border-orange-500/25"
+        }`}>
+          {isIncome ? "收入" : "支出"}
+        </span>
+        {entry.date && <p className="text-xs text-gray-600 mt-1">日期：{entry.date}</p>}
+        {entry.note && <p className="text-xs text-gray-600 mt-0.5">備註：{entry.note}</p>}
+      </div>
+      <span className={`text-sm font-medium tabular-nums shrink-0 ${
+        isIncome ? "text-teal-400" : "text-orange-400"
+      }`}>
+        {isIncome ? "+" : "−"} {fmtCurrency(entry.amount)}
+      </span>
+    </div>
+  );
+}
+
+// ─── ItemEditForm (for editing existing FinancialItem) ───────────────────────
+
+function ItemEditForm({
+  type, amount, dueDate, note,
+  setType, setAmount, setDueDate, setNote,
+  onSave, onCancel,
+}: {
+  type: "receivable" | "payable";
+  amount: string; dueDate: string; note: string;
+  setType: (v: "receivable" | "payable") => void;
+  setAmount: (v: string) => void;
+  setDueDate: (v: string) => void;
+  setNote: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const canSave = parseFloat(amount.replace(/,/g, "")) > 0;
+  return (
+    <div className="rounded-xl bg-white/[0.04] border border-white/10 p-4 space-y-3 mb-2">
+      <div className="flex gap-2">
+        {([["receivable","待收","bg-teal-500/20 text-teal-300 border-teal-500/40"],
+           ["payable",  "待付","bg-rose-500/20 text-rose-300 border-rose-500/40"]] as const).map(([k, l, cls]) => (
+          <button key={k} type="button" onClick={() => setType(k)}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+              type === k ? cls : "bg-white/5 text-gray-400 border-white/10"
+            }`}>{l}</button>
+        ))}
+      </div>
+      <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5">
+        <span className="text-gray-500 text-sm shrink-0">NT$</span>
+        <input type="text" inputMode="decimal" value={amount}
+          onChange={(e) => setAmount(e.target.value)} placeholder="0"
+          className="flex-1 bg-transparent text-white text-sm font-semibold focus:outline-none placeholder-gray-700" />
+      </div>
+      <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
+        style={{ colorScheme: "dark" }} />
+      <input type="text" value={note} onChange={(e) => setNote(e.target.value)}
+        placeholder="備註（選填）"
+        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none" />
+      <div className="flex gap-2">
+        <button type="button" onClick={onSave} disabled={!canSave}
+          className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-sm">儲存</button>
+        <button type="button" onClick={onCancel}
+          className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 font-semibold text-sm">取消</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── UnifiedAddForm ───────────────────────────────────────────────────────────
+
+type UnifiedType = "receivable" | "payable" | "income" | "expense";
+
+const UNIFIED_TYPE_OPTS: { key: UnifiedType; label: string; cls: string }[] = [
+  { key: "receivable", label: "待收", cls: "bg-teal-500/20 text-teal-300 border-teal-500/40" },
+  { key: "payable",    label: "待付", cls: "bg-rose-500/20 text-rose-300 border-rose-500/40" },
+  { key: "income",     label: "收入", cls: "bg-teal-600/25 text-teal-200 border-teal-500/35" },
+  { key: "expense",    label: "支出", cls: "bg-orange-500/20 text-orange-300 border-orange-500/35" },
+];
+
+function UnifiedAddForm({
+  type, amount, date, note,
+  setType, setAmount, setDate, setNote,
+  onSave, onCancel,
+}: {
+  type: UnifiedType; amount: string; date: string; note: string;
+  setType: (v: UnifiedType) => void;
+  setAmount: (v: string) => void;
+  setDate: (v: string) => void;
+  setNote: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const canSave = parseFloat(amount.replace(/,/g, "")) > 0;
+  return (
+    <div className="rounded-xl bg-white/[0.04] border border-white/10 p-4 space-y-3 mt-3">
+      {/* Type selector */}
+      <div className="flex gap-1.5 flex-wrap">
+        {UNIFIED_TYPE_OPTS.map(({ key, label, cls }) => (
+          <button key={key} type="button" onClick={() => setType(key)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+              type === key ? cls : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
+            }`}>{label}</button>
+        ))}
       </div>
       {/* Amount */}
-      <span className={`text-sm font-medium tabular-nums shrink-0 ${
-        isReceivable ? "text-teal-400" : "text-rose-400"
-      }`}>
-        {fmtCurrency(item.amount)}
-      </span>
-      {/* Edit / Delete — hover only */}
-      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-        <button
-          type="button"
-          onClick={onEdit}
-          className="text-xs text-gray-500 hover:text-blue-400 transition-colors px-1"
-        >
-          編輯
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="text-xs text-gray-500 hover:text-red-400 transition-colors px-1"
-        >
-          刪除
-        </button>
+      <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+        <span className="text-gray-500 text-sm shrink-0">NT$</span>
+        <input type="text" inputMode="decimal" value={amount}
+          onChange={(e) => setAmount(e.target.value)} placeholder="0"
+          className="flex-1 bg-transparent text-white text-base font-semibold focus:outline-none placeholder-gray-700" />
+      </div>
+      {/* Date */}
+      <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
+        style={{ colorScheme: "dark" }} />
+      {/* Note */}
+      <input type="text" value={note} onChange={(e) => setNote(e.target.value)}
+        placeholder="備註（選填）"
+        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none" />
+      {/* Buttons */}
+      <div className="flex gap-2 pt-1">
+        <button type="button" onClick={onSave} disabled={!canSave}
+          className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-sm transition-colors">儲存</button>
+        <button type="button" onClick={onCancel}
+          className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 font-semibold text-sm">取消</button>
       </div>
     </div>
   );
@@ -468,18 +473,18 @@ export function EditPage({
   const [category,  setCategory]  = useState(reminder.category ?? "");
 
   // ── Type-specific ──────────────────────────────────────────────────────────
-  const [flightNumber, setFlightNumber] = useState(reminder.flightNumber ?? "");
-  const [transferType, setTransferType] = useState(reminder.transferType ?? "");
-  const [district,     setDistrict]     = useState(reminder.district ?? "");
-  const [vehicleType,  setVehicleType]  = useState(reminder.vehicleType ?? "");
+  const [flightNumber,  setFlightNumber]  = useState(reminder.flightNumber ?? "");
+  const [transferType,  setTransferType]  = useState(reminder.transferType ?? "");
+  const [district,      setDistrict]      = useState(reminder.district ?? "");
+  const [vehicleType,   setVehicleType]   = useState(reminder.vehicleType ?? "");
   const [shoppingItems, setShoppingItems] = useState<string[]>(reminder.shoppingItems ?? []);
   const [newItem,       setNewItem]       = useState("");
-  const [account,    setAccount]    = useState(reminder.account ?? "");
-  const [hospital,   setHospital]   = useState(reminder.hospital ?? "");
-  const [department, setDepartment] = useState(reminder.department ?? "");
-  const [source,     setSource]     = useState(reminder.source ?? "");
-  const [merchant,   setMerchant]   = useState(reminder.merchant ?? "");
-  const [incomeAmount, setIncomeAmount] = useState(reminder.amount ?? "");
+  const [account,       setAccount]       = useState(reminder.account ?? "");
+  const [hospital,      setHospital]      = useState(reminder.hospital ?? "");
+  const [department,    setDepartment]    = useState(reminder.department ?? "");
+  const [source,        setSource]        = useState(reminder.source ?? "");
+  const [merchant,      setMerchant]      = useState(reminder.merchant ?? "");
+  const [incomeAmount,  setIncomeAmount]  = useState(reminder.amount ?? "");
 
   // ── Reminder notifications ─────────────────────────────────────────────────
   const [reminders,       setReminders]       = useState<ReminderNotification[]>(reminder.reminders ?? []);
@@ -489,94 +494,55 @@ export function EditPage({
   // ── Financial Items (v2) ───────────────────────────────────────────────────
   const [financialItems, setFinancialItems] = useState<FinancialItem[]>(() => deriveFinancialItems(reminder));
 
-  // Add new item form state
-  const [showAddItemForm, setShowAddItemForm] = useState(false);
-  const [itemFormType,   setItemFormType]   = useState<"receivable" | "payable">("receivable");
-  const [itemFormTitle,  setItemFormTitle]  = useState("");
-  const [itemFormAmount, setItemFormAmount] = useState("");
-  const [itemFormDate,   setItemFormDate]   = useState("");
-  const [itemFormNote,   setItemFormNote]   = useState("");
-
-  // Edit item form state
+  // Edit existing item state
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editFormType,   setEditFormType]   = useState<"receivable" | "payable">("receivable");
-  const [editFormTitle,  setEditFormTitle]  = useState("");
   const [editFormAmount, setEditFormAmount] = useState("");
   const [editFormDate,   setEditFormDate]   = useState("");
   const [editFormNote,   setEditFormNote]   = useState("");
 
-  // ── Confirm flow state (待收/待付 → 建立真實 Finance Record) ─────────────
+  // Confirm flow state
   const todayStr = new Date().toISOString().substring(0, 10);
   const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null);
   const [confirmAmount,    setConfirmAmount]    = useState("");
   const [confirmDate,      setConfirmDate]      = useState(todayStr);
   const [confirmNote,      setConfirmNote]      = useState("");
 
-  // ── Linked Finance Records (real Income/Expense entries) ──────────────────
+  // ── Linked Finance Records ────────────────────────────────────────────────
   const [linkedFinance, setLinkedFinance] = useState<FinanceEntry[]>(() =>
     loadFinanceEntries().filter((e) => e.sourceReminderId === reminder.id)
   );
-  const [showDetail,       setShowDetail]       = useState(false);
-  const [showAddFinance,   setShowAddFinance]   = useState(false);
 
-  // Inline Finance Record form
-  const initFinType: "income" | "expense" = t === "Airport Transfer" ? "income" : "expense";
-  const [newFinType,   setNewFinType]   = useState<"income" | "expense">(initFinType);
-  const [newFinAmount, setNewFinAmount] = useState("");
-  const [newFinCat,    setNewFinCat]    = useState("");
-  const [newFinDate,   setNewFinDate]   = useState(normalizeDate(date));
-  const [newFinNotes,  setNewFinNotes]  = useState("");
-
-  const newFinCategories = newFinType === "income" ? FINANCE_INCOME_CATEGORIES : FINANCE_EXPENSE_CATEGORIES;
-  const canSaveNewFin = !!newFinAmount && !isNaN(parseFloat(newFinAmount)) && parseFloat(newFinAmount) > 0;
-
-  // ── Finance Records summary ────────────────────────────────────────────────
-  const incomeTotal  = linkedFinance.filter(e => e.type === "Income").reduce((s, e) => s + e.amount, 0);
-  const expenseTotal = linkedFinance.filter(e => e.type === "Expense").reduce((s, e) => s + e.amount, 0);
+  // ── Unified add form state ────────────────────────────────────────────────
+  const defaultUnifiedType: UnifiedType =
+    isPayment ? "payable" : isAirport ? "receivable" : "payable";
+  const [showAddUnified, setShowAddUnified] = useState(false);
+  const [unifiedType,    setUnifiedType]    = useState<UnifiedType>(defaultUnifiedType);
+  const [unifiedAmount,  setUnifiedAmount]  = useState("");
+  const [unifiedDate,    setUnifiedDate]    = useState("");
+  const [unifiedNote,    setUnifiedNote]    = useState("");
 
   // ── Financial Items handlers ───────────────────────────────────────────────
-
-  function resetAddForm() {
-    setItemFormType("receivable");
-    setItemFormTitle("");
-    setItemFormAmount("");
-    setItemFormDate("");
-    setItemFormNote("");
-  }
-
-  function handleAddItem() {
-    const amt = parseFloat(itemFormAmount.replace(/,/g, ""));
-    if (!itemFormTitle.trim() || isNaN(amt) || amt <= 0) return;
-    const newFi: FinancialItem = {
-      id: crypto.randomUUID(),
-      title: itemFormTitle.trim(),
-      type: itemFormType,
-      amount: amt,
-      dueDate: itemFormDate || undefined,
-      note: itemFormNote.trim() || undefined,
-    };
-    setFinancialItems((p) => [...p, newFi]);
-    setShowAddItemForm(false);
-    resetAddForm();
-  }
 
   function handleStartEditItem(item: FinancialItem) {
     setEditingItemId(item.id);
     setEditFormType(item.type);
-    setEditFormTitle(item.title);
     setEditFormAmount(String(item.amount));
     setEditFormDate(item.dueDate ?? "");
     setEditFormNote(item.note ?? "");
+    setConfirmingItemId(null);
+    setShowAddUnified(false);
   }
 
   function handleSaveEditItem() {
     if (!editingItemId) return;
     const amt = parseFloat(editFormAmount.replace(/,/g, ""));
-    if (!editFormTitle.trim() || isNaN(amt) || amt <= 0) return;
+    if (isNaN(amt) || amt <= 0) return;
     setFinancialItems((p) => p.map((i) =>
       i.id === editingItemId
-        ? { ...i, type: editFormType, title: editFormTitle.trim(), amount: amt,
-            dueDate: editFormDate || undefined, note: editFormNote.trim() || undefined }
+        ? { ...i, type: editFormType, amount: amt,
+            dueDate: editFormDate || undefined,
+            note: editFormNote.trim() || undefined }
         : i
     ));
     setEditingItemId(null);
@@ -595,13 +561,11 @@ export function EditPage({
     setConfirmAmount(String(item.amount));
     setConfirmDate(todayStr);
     setConfirmNote(item.note ?? "");
-    // Close any other panels
     setEditingItemId(null);
-    setShowAddItemForm(false);
+    setShowAddUnified(false);
   }
 
   function handleConfirmItem(item: FinancialItem) {
-    // Guard: already completed via Finance Record (belt-and-suspenders)
     if (linkedFinance.some(e => e.sourceFinancialItemId === item.id)) {
       setConfirmingItemId(null);
       return;
@@ -612,14 +576,13 @@ export function EditPage({
     const now = new Date().toISOString();
     const confirmedDate = confirmDate || todayStr;
 
-    // 1. Build Finance Record
     const entry: FinanceEntry = {
       id: crypto.randomUUID(),
       type: item.type === "receivable" ? "Income" : "Expense",
-      title: item.title,
+      title: item.title || reminder.title,
       amount: amt,
       date: confirmedDate,
-      financialCategory: item.type === "receivable" ? "接送收入" : "",
+      financialCategory: "",
       note: confirmNote.trim() || undefined,
       createdAt: now,
       updatedAt: now,
@@ -629,7 +592,6 @@ export function EditPage({
     saveFinanceEntries([...loadFinanceEntries(), entry]);
     setLinkedFinance((p) => [...p, entry]);
 
-    // 2. Mark Financial Item completed
     const updatedItems = financialItems.map((i) =>
       i.id === item.id
         ? { ...i, completed: true, completedDate: confirmedDate }
@@ -637,8 +599,6 @@ export function EditPage({
     );
     setFinancialItems(updatedItems);
 
-    // 3. Persist immediately to Reminder in localStorage
-    //    (prevents re-creation even if user doesn't click main 儲存)
     updateReminder(reminder.id, {
       financialItems: updatedItems,
       financialStatus: undefined,
@@ -649,34 +609,51 @@ export function EditPage({
     setConfirmingItemId(null);
   }
 
-  // ── Finance Record handlers ────────────────────────────────────────────────
+  // ── Unified add handler ───────────────────────────────────────────────────
 
-  function handleSaveFinanceRecord() {
-    const amt = parseFloat(newFinAmount.replace(/,/g, ""));
+  function handleAddUnified() {
+    const amt = parseFloat(unifiedAmount.replace(/,/g, ""));
     if (isNaN(amt) || amt <= 0) return;
-    const now = new Date().toISOString();
-    const entry: FinanceEntry = {
-      id: crypto.randomUUID(),
-      type: newFinType === "income" ? "Income" : "Expense",
-      title: reminder.title || (newFinType === "income" ? "收入" : "支出"),
-      amount: amt,
-      date: newFinDate || now.substring(0, 10),
-      financialCategory: newFinCat,
-      note: newFinNotes.trim() || undefined,
-      createdAt: now,
-      updatedAt: now,
-      sourceReminderId: reminder.id,
-    };
-    saveFinanceEntries([...loadFinanceEntries(), entry]);
-    setLinkedFinance((p) => [...p, entry]);
-    setShowAddFinance(false);
-    setNewFinAmount(""); setNewFinCat(""); setNewFinNotes("");
+    const today = new Date().toISOString().substring(0, 10);
+
+    if (unifiedType === "receivable" || unifiedType === "payable") {
+      const item: FinancialItem = {
+        id: crypto.randomUUID(),
+        title: reminder.title || "款項",
+        type: unifiedType,
+        amount: amt,
+        dueDate: unifiedDate || undefined,
+        note: unifiedNote.trim() || undefined,
+      };
+      setFinancialItems((p) => [...p, item]);
+    } else {
+      const now = new Date().toISOString();
+      const entry: FinanceEntry = {
+        id: crypto.randomUUID(),
+        type: unifiedType === "income" ? "Income" : "Expense",
+        title: reminder.title || (unifiedType === "income" ? "收入" : "支出"),
+        amount: amt,
+        date: unifiedDate || today,
+        financialCategory: "",
+        note: unifiedNote.trim() || undefined,
+        createdAt: now,
+        updatedAt: now,
+        sourceReminderId: reminder.id,
+      };
+      saveFinanceEntries([...loadFinanceEntries(), entry]);
+      setLinkedFinance((p) => [...p, entry]);
+    }
+
+    setShowAddUnified(false);
+    setUnifiedAmount("");
+    setUnifiedDate("");
+    setUnifiedNote("");
+    setUnifiedType(defaultUnifiedType);
   }
 
-  // ── Main save ──────────────────────────────────────────────────────────────
+  // ── Main save ─────────────────────────────────────────────────────────────
 
   function handleSave() {
-    // Derive backward-compat amount/dueDate for Payment and AirportTransfer
     const firstPayable    = financialItems.find(i => i.type === "payable");
     const firstReceivable = financialItems.find(i => i.type === "receivable");
 
@@ -704,9 +681,7 @@ export function EditPage({
       sameDayReminder:     reminder.sameDayReminder,
       dayBeforeReminder:   reminder.dayBeforeReminder,
       hoursBeforeReminder: reminder.hoursBeforeReminder,
-      // v2 financial items
       financialItems: financialItems.length > 0 ? financialItems : undefined,
-      // Clear legacy single-status fields (now covered by financialItems)
       financialStatus: undefined,
       expectedAmount:  undefined,
       financialDueDate: undefined,
@@ -733,6 +708,7 @@ export function EditPage({
     ? !!(financialItems.find(i => i.type === "payable")?.dueDate)
     : !!date;
   const re_hasTime = timeMode !== "allday" && !!startTime;
+  const hasAnyFinance = financialItems.length > 0 || linkedFinance.length > 0;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -740,10 +716,8 @@ export function EditPage({
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <button
-          onClick={onCancel}
-          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors"
-        >
+        <button onClick={onCancel}
+          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors">
           <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
             <path d="M10 12L6 8l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
@@ -765,16 +739,11 @@ export function EditPage({
         <CategorySelect type={t} value={category} onChange={setCategory} />
       </FieldRow>
 
-      {/* Payment 截止日期由收支款項管理，不在基本資訊重複 */}
       {!isPending && !isPayment && (
         <FieldRow label="日期">
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
             className="w-full bg-transparent text-sm text-white focus:outline-none"
-            style={{ colorScheme: "dark" }}
-          />
+            style={{ colorScheme: "dark" }} />
         </FieldRow>
       )}
 
@@ -818,18 +787,12 @@ export function EditPage({
               {(["接機", "送機", "未指定"] as const).map((opt) => {
                 const val = opt === "未指定" ? "" : opt;
                 return (
-                  <button
-                    key={opt}
-                    type="button"
-                    onClick={() => setTransferType(val)}
+                  <button key={opt} type="button" onClick={() => setTransferType(val)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
                       transferType === val
                         ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
                         : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
-                    }`}
-                  >
-                    {opt}
-                  </button>
+                    }`}>{opt}</button>
                 );
               })}
             </div>
@@ -843,7 +806,6 @@ export function EditPage({
           <FieldRow label="車型">
             <TextInput value={vehicleType} onChange={setVehicleType} placeholder="如 轎車、廂型" />
           </FieldRow>
-          {/* 接送費用由收支款項統一管理 */}
         </>
       )}
 
@@ -858,31 +820,18 @@ export function EditPage({
               {shoppingItems.map((item, idx) => (
                 <div key={idx} className="flex items-center justify-between py-2 px-3 rounded-lg bg-white/[0.04] border border-white/8">
                   <span className="text-sm text-white">{item}</span>
-                  <button
-                    type="button"
+                  <button type="button"
                     onClick={() => setShoppingItems((p) => p.filter((_, i) => i !== idx))}
-                    className="text-gray-500 hover:text-red-400 transition-colors ml-3 shrink-0 text-base leading-none px-1"
-                  >
-                    ×
-                  </button>
+                    className="text-gray-500 hover:text-red-400 transition-colors ml-3 shrink-0 text-base leading-none px-1">×</button>
                 </div>
               ))}
               <div className="flex gap-2 mt-2">
-                <input
-                  type="text"
-                  value={newItem}
-                  onChange={(e) => setNewItem(e.target.value)}
+                <input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") handleAddShoppingItem(); }}
                   placeholder="輸入品項，Enter 新增"
-                  className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddShoppingItem}
-                  className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm text-gray-300 border border-white/10 transition-all shrink-0"
-                >
-                  新增
-                </button>
+                  className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50" />
+                <button type="button" onClick={handleAddShoppingItem}
+                  className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm text-gray-300 border border-white/10 transition-all shrink-0">新增</button>
               </div>
             </div>
           </FieldRow>
@@ -891,7 +840,6 @@ export function EditPage({
 
       {isPayment && (
         <>
-          {/* 金額與截止日期由收支款項管理 */}
           <SectionLabel>付款資訊</SectionLabel>
           <FieldRow label="帳戶">
             <TextInput value={account} onChange={setAccount} placeholder="帳戶或繳費方式（選填）" />
@@ -928,22 +876,21 @@ export function EditPage({
         <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
       </FieldRow>
 
-      {/* ══ 3. 收支 ═══════════════════════════════════════════════════════════ */}
+      {/* ══ 3. 收支（統一清單）══════════════════════════════════════════════════ */}
       {!isPending && (
         <>
           <SectionLabel>收支</SectionLabel>
 
-          {/* ── 款項（預計收付）─────────────────────────────────────────── */}
-          <SubLabel>款項</SubLabel>
-
-          {/* Financial Items list */}
-          {financialItems.length === 0 && !showAddItemForm && (
-            <p className="text-xs text-gray-600 py-2">尚無待收或待付款項</p>
+          {/* Empty state */}
+          {!hasAnyFinance && !showAddUnified && (
+            <p className="text-xs text-gray-600 py-2">尚無收支紀錄</p>
           )}
 
+          {/* Unified list — FinancialItems + FinanceEntries */}
           <div className="space-y-px">
+
+            {/* ── FinancialItems ── */}
             {financialItems.map((fi) => {
-              // An item is "completed" if flag is set OR a Finance Record already links to it
               const isItemCompleted =
                 fi.completed === true ||
                 linkedFinance.some(e => e.sourceFinancialItemId === fi.id);
@@ -951,14 +898,13 @@ export function EditPage({
               if (editingItemId === fi.id) {
                 return (
                   <div key={fi.id} className="mb-2">
-                    <ItemForm
-                      type={editFormType}    title={editFormTitle}
-                      amount={editFormAmount} dueDate={editFormDate} note={editFormNote}
-                      setType={setEditFormType}    setTitle={setEditFormTitle}
-                      setAmount={setEditFormAmount} setDueDate={setEditFormDate} setNote={setEditFormNote}
+                    <ItemEditForm
+                      type={editFormType}    amount={editFormAmount}
+                      dueDate={editFormDate} note={editFormNote}
+                      setType={setEditFormType}    setAmount={setEditFormAmount}
+                      setDueDate={setEditFormDate} setNote={setEditFormNote}
                       onSave={handleSaveEditItem}
                       onCancel={() => setEditingItemId(null)}
-                      saveLabel="儲存"
                     />
                   </div>
                 );
@@ -978,71 +924,51 @@ export function EditPage({
                     onDelete={() => handleDeleteItem(fi.id)}
                   />
 
-                  {/* Inline confirm form — expands below the row */}
+                  {/* Inline confirm form */}
                   {isConf && (
-                    <div className="ml-7 mb-3 rounded-xl bg-white/[0.04] border border-white/10 p-4 space-y-3">
+                    <div className="ml-7 mb-3 mt-1 rounded-xl bg-white/[0.04] border border-white/10 p-4 space-y-3">
                       <p className="text-xs text-gray-300 font-semibold">
                         {fi.type === "receivable" ? "確認收款" : "確認付款"}
                       </p>
-                      {/* Amount */}
                       <div>
                         <p className="text-[10px] text-gray-500 mb-1.5">
                           {fi.type === "receivable" ? "實收金額" : "實付金額"}
                         </p>
                         <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5">
                           <span className="text-gray-500 text-sm shrink-0">NT$</span>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={confirmAmount}
+                          <input type="text" inputMode="decimal" value={confirmAmount}
                             onChange={(e) => setConfirmAmount(e.target.value)}
-                            className="flex-1 bg-transparent text-white text-base font-semibold focus:outline-none placeholder-gray-700"
-                          />
+                            className="flex-1 bg-transparent text-white text-base font-semibold focus:outline-none placeholder-gray-700" />
                         </div>
                       </div>
-                      {/* Date */}
                       <div>
                         <p className="text-[10px] text-gray-500 mb-1.5">
                           {fi.type === "receivable" ? "收款日期" : "付款日期"}
                         </p>
-                        <input
-                          type="date"
-                          value={confirmDate}
+                        <input type="date" value={confirmDate}
                           onChange={(e) => setConfirmDate(e.target.value)}
                           className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
-                          style={{ colorScheme: "dark" }}
-                        />
+                          style={{ colorScheme: "dark" }} />
                       </div>
-                      {/* Note */}
                       <div>
                         <p className="text-[10px] text-gray-500 mb-1.5">備註</p>
-                        <input
-                          type="text"
-                          value={confirmNote}
+                        <input type="text" value={confirmNote}
                           onChange={(e) => setConfirmNote(e.target.value)}
                           placeholder="備註（選填）"
-                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none"
-                        />
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none" />
                       </div>
-                      {/* Buttons */}
                       <div className="flex gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => handleConfirmItem(fi)}
+                        <button type="button" onClick={() => handleConfirmItem(fi)}
                           disabled={!canConfirmAmt}
                           className={`flex-1 py-2.5 rounded-xl text-white font-semibold text-sm transition-colors disabled:opacity-40 ${
                             fi.type === "receivable"
                               ? "bg-teal-600 hover:bg-teal-500"
                               : "bg-rose-600 hover:bg-rose-500"
-                          }`}
-                        >
+                          }`}>
                           {fi.type === "receivable" ? "確認已收款" : "確認已付款"}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmingItemId(null)}
-                          className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 font-semibold text-sm"
-                        >
+                        <button type="button" onClick={() => setConfirmingItemId(null)}
+                          className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 font-semibold text-sm">
                           取消
                         </button>
                       </div>
@@ -1051,181 +977,38 @@ export function EditPage({
                 </div>
               );
             })}
+
+            {/* ── FinanceEntries (Income/Expense) ── */}
+            {linkedFinance.map((entry) => (
+              <FinanceEntryRow key={entry.id} entry={entry} />
+            ))}
           </div>
 
-          {/* Add item form */}
-          {showAddItemForm && !editingItemId && !confirmingItemId && (
-            <ItemForm
-              type={itemFormType}    title={itemFormTitle}
-              amount={itemFormAmount} dueDate={itemFormDate} note={itemFormNote}
-              setType={setItemFormType}    setTitle={setItemFormTitle}
-              setAmount={setItemFormAmount} setDueDate={setItemFormDate} setNote={setItemFormNote}
-              onSave={handleAddItem}
-              onCancel={() => { setShowAddItemForm(false); resetAddForm(); }}
+          {/* Unified add form */}
+          {showAddUnified && !editingItemId && !confirmingItemId && (
+            <UnifiedAddForm
+              type={unifiedType}    amount={unifiedAmount}
+              date={unifiedDate}    note={unifiedNote}
+              setType={setUnifiedType}   setAmount={setUnifiedAmount}
+              setDate={setUnifiedDate}   setNote={setUnifiedNote}
+              onSave={handleAddUnified}
+              onCancel={() => {
+                setShowAddUnified(false);
+                setUnifiedAmount(""); setUnifiedDate(""); setUnifiedNote("");
+                setUnifiedType(defaultUnifiedType);
+              }}
             />
           )}
 
           {/* ＋ 新增款項 */}
-          {!showAddItemForm && !editingItemId && !confirmingItemId && (
+          {!showAddUnified && !editingItemId && !confirmingItemId && (
             <button
               type="button"
-              onClick={() => setShowAddItemForm(true)}
-              className="mt-2 text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors"
+              onClick={() => setShowAddUnified(true)}
+              className="mt-3 inline-flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 px-3 py-2 rounded-lg bg-blue-500/8 border border-blue-500/20 hover:bg-blue-500/12 transition-all"
             >
-              <span className="text-sm leading-none">＋</span>
+              <span className="text-sm leading-none font-light">＋</span>
               <span>新增款項</span>
-            </button>
-          )}
-
-          {/* ── 實際收支（Finance Records）─────────────────────────────── */}
-          <SubLabel>實際收支</SubLabel>
-
-          {linkedFinance.length === 0 && !showAddFinance ? (
-            <p className="text-xs text-gray-600 py-2">尚無實際收支紀錄</p>
-          ) : linkedFinance.length > 0 ? (
-            <div className="py-2 space-y-1">
-              {incomeTotal > 0 && (
-                <p className="text-sm text-teal-400">收入 + {fmtCurrency(incomeTotal)}</p>
-              )}
-              {expenseTotal > 0 && (
-                <p className="text-sm text-rose-400">支出 − {fmtCurrency(expenseTotal)}</p>
-              )}
-              <p className="text-xs text-gray-600">{linkedFinance.length} 筆紀錄</p>
-
-              <div className="flex items-center gap-4 pt-1.5">
-                <button
-                  type="button"
-                  onClick={() => setShowDetail((p) => !p)}
-                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                >
-                  {showDetail ? "收合明細" : "查看明細"}
-                </button>
-                {!showAddFinance && (
-                  <button
-                    type="button"
-                    onClick={() => { setShowAddFinance(true); setNewFinType(initFinType); setNewFinAmount(""); setNewFinCat(defaultFinCategory(t, initFinType)); }}
-                    className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
-                  >
-                    ＋ 新增
-                  </button>
-                )}
-              </div>
-
-              {/* Detail list */}
-              {showDetail && (
-                <div className="mt-2 space-y-px">
-                  {linkedFinance.map((e) => (
-                    <div key={e.id} className="flex items-start justify-between py-2 border-b border-white/5 last:border-0">
-                      <div>
-                        <p className="text-sm text-gray-200">{e.title}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {e.date}{e.financialCategory ? ` · ${e.financialCategory}` : ""}
-                        </p>
-                      </div>
-                      <span className={`text-sm font-medium tabular-nums ml-4 shrink-0 ${
-                        e.type === "Income" ? "text-teal-400" : "text-rose-400"
-                      }`}>
-                        {e.type === "Income" ? "+" : "−"} {fmtCurrency(e.amount)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : null}
-
-          {/* Inline Finance Record form */}
-          {showAddFinance && (
-            <div className="mt-2 rounded-xl bg-white/[0.04] border border-white/10 p-4 space-y-3">
-              <p className="text-xs text-gray-400 font-medium">
-                {newFinType === "income" ? "新增收入紀錄" : "新增支出紀錄"}
-              </p>
-              {/* Type toggle */}
-              <div className="flex rounded-xl bg-white/5 border border-white/8 p-0.5 gap-0.5">
-                {([["expense","支出"],["income","收入"]] as const).map(([ft, lbl]) => (
-                  <button
-                    key={ft}
-                    type="button"
-                    onClick={() => { setNewFinType(ft); setNewFinCat(defaultFinCategory(t, ft)); }}
-                    className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
-                      newFinType === ft
-                        ? ft === "income"
-                          ? "bg-teal-500/20 text-teal-300 border border-teal-500/25"
-                          : "bg-orange-500/20 text-orange-300 border border-orange-500/25"
-                        : "text-gray-500"
-                    }`}
-                  >
-                    {lbl}
-                  </button>
-                ))}
-              </div>
-              {/* Amount */}
-              <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-                <span className="text-gray-500 text-sm shrink-0">NT$</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={newFinAmount}
-                  onChange={(e) => setNewFinAmount(e.target.value)}
-                  placeholder="0"
-                  className="flex-1 bg-transparent text-white text-base font-semibold focus:outline-none placeholder-gray-700"
-                />
-              </div>
-              {/* Category */}
-              <select
-                value={newFinCat}
-                onChange={(e) => setNewFinCat(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
-                style={{ colorScheme: "dark" }}
-              >
-                <option value="">選擇分類</option>
-                {newFinCategories.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-              {/* Date */}
-              <input
-                type="date"
-                value={newFinDate}
-                onChange={(e) => setNewFinDate(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
-                style={{ colorScheme: "dark" }}
-              />
-              {/* Notes */}
-              <input
-                type="text"
-                value={newFinNotes}
-                onChange={(e) => setNewFinNotes(e.target.value)}
-                placeholder="備註（選填）"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none"
-              />
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={handleSaveFinanceRecord}
-                  disabled={!canSaveNewFin}
-                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-sm transition-colors"
-                >
-                  儲存紀錄
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowAddFinance(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 font-semibold text-sm"
-                >
-                  取消
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ＋ 新增收支 — when no records and form not showing */}
-          {linkedFinance.length === 0 && !showAddFinance && (
-            <button
-              type="button"
-              onClick={() => { setShowAddFinance(true); setNewFinType(initFinType); setNewFinAmount(""); setNewFinCat(defaultFinCategory(t, initFinType)); }}
-              className="mt-2 text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1 transition-colors"
-            >
-              <span className="text-sm leading-none">＋</span>
-              <span>新增收支</span>
             </button>
           )}
         </>
@@ -1235,25 +1018,15 @@ export function EditPage({
       {!isPending && (
         <>
           <SectionLabel>提醒設定</SectionLabel>
-          <Toggle
-            label="提醒事項"
-            description="啟用提醒通知"
-            checked={reminderEnabled}
-            onChange={setReminderEnabled}
-          />
-          <Toggle
-            label="行事曆"
-            description="加入行事曆（尚未串接）"
-            checked={calendarEnabled}
-            onChange={setCalendarEnabled}
-          />
+          <Toggle label="提醒事項" description="啟用提醒通知"
+            checked={reminderEnabled} onChange={setReminderEnabled} />
+          <Toggle label="行事曆" description="加入行事曆（尚未串接）"
+            checked={calendarEnabled} onChange={setCalendarEnabled} />
           {reminderEnabled && (
             <div className="pt-3 pb-1">
               <ReminderEditor
-                reminders={reminders}
-                onChange={setReminders}
-                hasDate={re_hasDate}
-                hasTime={re_hasTime}
+                reminders={reminders} onChange={setReminders}
+                hasDate={re_hasDate} hasTime={re_hasTime}
               />
             </div>
           )}
@@ -1262,25 +1035,19 @@ export function EditPage({
 
       {/* ══ 5. 儲存／取消 ══════════════════════════════════════════════════════ */}
       <div className="mt-6 flex gap-3">
-        <button
-          onClick={handleSave}
-          className="flex-1 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-600/20"
-        >
+        <button onClick={handleSave}
+          className="flex-1 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-600/20">
           儲存
         </button>
-        <button
-          onClick={onCancel}
-          className="flex-1 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 font-semibold text-sm transition-all"
-        >
+        <button onClick={onCancel}
+          className="flex-1 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 font-semibold text-sm transition-all">
           取消
         </button>
       </div>
 
       {/* ══ 6. 刪除 ════════════════════════════════════════════════════════════ */}
-      <button
-        onClick={handleDeleteConfirm}
-        className="w-full mt-3 py-3.5 rounded-xl text-red-400 hover:bg-red-500/8 border border-red-500/20 text-sm font-semibold transition-all"
-      >
+      <button onClick={handleDeleteConfirm}
+        className="w-full mt-3 py-3.5 rounded-xl text-red-400 hover:bg-red-500/8 border border-red-500/20 text-sm font-semibold transition-all">
         刪除此事項
       </button>
     </div>

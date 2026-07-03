@@ -304,24 +304,21 @@ function ReminderCard({
             )}
           </div>
         )}
-      </div>
 
-      {/* Action buttons */}
-      <div className="flex flex-col gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-        {/* Quick finance button — only for non-finance reminders */}
+        {/* ＋ 新增款項 — visible text button, opens editor */}
         {!isFinance && !reminder.completed && (
           <button
-            onClick={() => onQuickFinance(reminder.id)}
-            className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-600 hover:text-teal-400 hover:bg-teal-500/10 transition-all duration-150 opacity-0 group-hover:opacity-100"
-            title="快速記帳"
+            onClick={(e) => { e.stopPropagation(); onEdit(reminder.id); }}
+            className="mt-2.5 inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 px-2.5 py-1.5 rounded-lg bg-blue-500/8 border border-blue-500/18 hover:bg-blue-500/14 transition-all active:scale-95"
           >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none">
-              <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.1"/>
-              <path d="M7 4.5v5M4.5 7h5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-            </svg>
+            <span className="text-sm leading-none font-light">＋</span>
+            <span>新增款項</span>
           </button>
         )}
-        {/* Delete */}
+      </div>
+
+      {/* Delete button */}
+      <div className="flex flex-col shrink-0 self-start" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={() => onDelete(reminder.id)}
           className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-all duration-150"

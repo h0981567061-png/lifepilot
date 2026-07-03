@@ -1,2 +1,2 @@
 - [Time/date normalization](time-date-normalization.md) — normalizeTime/normalizeDate in utils.ts; always normalize before storing or displaying, never raw-slice time strings.
-- [FinancialItem 資料架構](financial-item-architecture.md) — v2 多筆款項清單設計：financialItems 為新主力，舊 financialStatus/expectedAmount 為 legacy compat
+- [FinancialItem 資料架構](financial-item-architecture.md) — v2 多筆款項清單設計；統一收支 UI（UnifiedAddForm 四類型：待收/待付/收入/支出）；confirm flow 防重複雙保險；deriveFinancialItems backward compat
