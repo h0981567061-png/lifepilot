@@ -196,7 +196,7 @@ export function FinanceEditor({
         </select>
       </FieldRow>
 
-      <FieldRow label="我的分類">
+      <FieldRow label="群組">
         <select
           value={myCategory}
           onChange={(e) => setMyCategory(e.target.value)}

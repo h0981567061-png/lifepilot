@@ -43,7 +43,7 @@ function QuickAddForm({
   return (
     <div className="mt-2 rounded-xl border border-white/10 bg-gray-900/90 p-3 space-y-2.5">
       <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
-        新增分類
+        新增群組
       </p>
 
       {/* Name */}
@@ -52,7 +52,7 @@ function QuickAddForm({
         value={name}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") handleConfirm(); }}
-        placeholder="分類名稱"
+        placeholder="群組名稱"
         className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
         autoFocus
       />
@@ -111,7 +111,7 @@ function QuickAddForm({
           disabled={!name.trim()}
           className="flex-1 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-medium transition-colors"
         >
-          建立分類
+          建立群組
         </button>
         <button
           type="button"
@@ -199,7 +199,7 @@ export function CategorySelect({ type, value, onChange, compact = false }: Props
           onClick={() => setShowQuickAdd(true)}
           className="text-[11px] text-blue-400/70 hover:text-blue-400 transition-colors"
         >
-          ＋ 新增分類
+          ＋ 新增群組
         </button>
       )}
 

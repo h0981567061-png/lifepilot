@@ -31,7 +31,7 @@ function EditCategoryModal({
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm">
       <div className="w-full max-w-2xl bg-gray-900 border-t border-white/10 rounded-t-2xl p-6 pb-10 space-y-4">
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-base font-semibold text-white">編輯分類</h2>
+          <h2 className="text-base font-semibold text-white">編輯群組</h2>
           <button
             type="button"
             onClick={onClose}
@@ -43,7 +43,7 @@ function EditCategoryModal({
 
         {/* Name */}
         <div className="space-y-1">
-          <p className="text-[10px] text-gray-500 uppercase tracking-wide">分類名稱</p>
+          <p className="text-[10px] text-gray-500 uppercase tracking-wide">群組名稱</p>
           <input
             type="text"
             value={name}
@@ -54,7 +54,7 @@ function EditCategoryModal({
 
         {/* Color */}
         <div className="space-y-2">
-          <p className="text-[10px] text-gray-500 uppercase tracking-wide">分類顏色</p>
+          <p className="text-[10px] text-gray-500 uppercase tracking-wide">群組顏色</p>
           <div className="flex items-center gap-2 flex-wrap">
             {COLOR_OPTIONS.map((c) => (
               <button
@@ -74,7 +74,7 @@ function EditCategoryModal({
 
         {/* Icon */}
         <div className="space-y-2">
-          <p className="text-[10px] text-gray-500 uppercase tracking-wide">分類圖示</p>
+          <p className="text-[10px] text-gray-500 uppercase tracking-wide">群組圖示</p>
           <button
             type="button"
             onClick={() => setShowIconGrid((v) => !v)}
@@ -142,7 +142,7 @@ function AddCategoryModal({
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm">
       <div className="w-full max-w-2xl bg-gray-900 border-t border-white/10 rounded-t-2xl p-6 pb-10 space-y-4">
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-base font-semibold text-white">新增分類</h2>
+          <h2 className="text-base font-semibold text-white">新增群組</h2>
           <button
             type="button"
             onClick={onClose}
@@ -153,20 +153,20 @@ function AddCategoryModal({
         </div>
 
         <div className="space-y-1">
-          <p className="text-[10px] text-gray-500 uppercase tracking-wide">分類名稱</p>
+          <p className="text-[10px] text-gray-500 uppercase tracking-wide">群組名稱</p>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) onSave(name.trim(), color, icon); }}
-            placeholder="如 寵物、健身、客戶 A"
+            placeholder="如 家庭、工作、小孩"
             autoFocus
             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
           />
         </div>
 
         <div className="space-y-2">
-          <p className="text-[10px] text-gray-500 uppercase tracking-wide">分類顏色</p>
+          <p className="text-[10px] text-gray-500 uppercase tracking-wide">群組顏色</p>
           <div className="flex items-center gap-2 flex-wrap">
             {COLOR_OPTIONS.map((c) => (
               <button
@@ -185,7 +185,7 @@ function AddCategoryModal({
         </div>
 
         <div className="space-y-2">
-          <p className="text-[10px] text-gray-500 uppercase tracking-wide">分類圖示</p>
+          <p className="text-[10px] text-gray-500 uppercase tracking-wide">群組圖示</p>
           <button
             type="button"
             onClick={() => setShowIconGrid((v) => !v)}
@@ -219,7 +219,7 @@ function AddCategoryModal({
             disabled={!name.trim()}
             className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-sm transition-colors"
           >
-            建立分類
+            建立群組
           </button>
           <button
             type="button"
@@ -386,29 +386,29 @@ export function CategoryManagementPage({ savedReminders, onClose }: Props) {
         </div>
 
         <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight text-white mb-1">分類管理</h1>
-          <p className="text-gray-500 text-sm">建立與管理你的個人分類</p>
+          <h1 className="text-3xl font-bold tracking-tight text-white mb-1">群組管理</h1>
+          <p className="text-gray-500 text-sm">建立與管理你的個人群組</p>
         </div>
 
         {/* 我的分類 */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
-              我的分類
+              我的群組
             </h2>
             <button
               type="button"
               onClick={() => setShowAdd(true)}
               className="text-xs px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 text-blue-400 hover:text-blue-300 hover:border-blue-500/30 transition-all"
             >
-              ＋ 新增分類
+              ＋ 新增群組
             </button>
           </div>
 
           {customCategories.length === 0 ? (
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center">
-              <p className="text-sm text-gray-600">尚無自訂分類</p>
-              <p className="text-xs text-gray-700 mt-1">點擊「＋ 新增分類」建立你的第一個分類</p>
+              <p className="text-sm text-gray-600">尚無自訂群組</p>
+              <p className="text-xs text-gray-700 mt-1">點擊「＋ 新增群組」建立你的第一個群組</p>
             </div>
           ) : (
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] overflow-hidden">
@@ -429,7 +429,7 @@ export function CategoryManagementPage({ savedReminders, onClose }: Props) {
         {/* 預設分類 */}
         <div>
           <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
-            預設分類
+            預設群組
           </h2>
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] overflow-hidden">
             {systemCategories.map((cat) => (
@@ -444,7 +444,7 @@ export function CategoryManagementPage({ savedReminders, onClose }: Props) {
             ))}
           </div>
           <p className="text-xs text-gray-700 text-center mt-3">
-            預設分類不能永久刪除，可隱藏以避免出現在選單
+            預設群組不能永久刪除，可隱藏以避免出現在選單
           </p>
         </div>
       </div>

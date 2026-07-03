@@ -16,8 +16,8 @@ export function MyPage({ onOpenCategoryMgmt }: Props) {
   const menuItems: MenuItem[] = [
     {
       icon: "◈",
-      label: "分類管理",
-      desc: "新增、編輯個人分類與顏色",
+      label: "群組管理",
+      desc: "新增、編輯個人群組與顏色",
       available: true,
       onClick: onOpenCategoryMgmt,
     },
