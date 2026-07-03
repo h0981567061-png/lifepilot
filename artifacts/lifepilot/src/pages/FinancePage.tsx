@@ -192,6 +192,25 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
 
   function handleEditorDelete() {
     if (!editingEntry) return;
+
+    // If linked to a Financial Item via sourceFinancialItemId → restore it to !completed
+    if (editingEntry.sourceFinancialItemId && editingEntry.sourceReminderId) {
+      const linkedReminder = propReminders.find((r) => r.id === editingEntry.sourceReminderId);
+      if (linkedReminder) {
+        const baseItems = linkedReminder.financialItems ?? [];
+        const hasItem = baseItems.some((i) => i.id === editingEntry.sourceFinancialItemId);
+        if (hasItem) {
+          const restoredItems = baseItems.map((i) =>
+            i.id === editingEntry.sourceFinancialItemId
+              ? { ...i, completed: false, completedDate: undefined }
+              : i,
+          );
+          const updated = updateReminder(linkedReminder.id, { financialItems: restoredItems });
+          onRemindersChange?.(updated);
+        }
+      }
+    }
+
     mutate((prev) => prev.filter((e) => e.id !== editingEntry.id));
     setEditorMode("idle");
     setEditingEntry(null);
@@ -285,6 +304,7 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
         onSave={handleEditorSave}
         onDelete={editorMode === "edit" ? handleEditorDelete : undefined}
         onCancel={() => { setEditorMode("idle"); setEditingEntry(null); }}
+        isLinkedEntry={editorMode === "edit" && !!editingEntry?.sourceFinancialItemId}
       />
     );
   }

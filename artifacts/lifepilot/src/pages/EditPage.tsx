@@ -300,37 +300,115 @@ function FinancialItemRow({
 
 // ─── FinanceEntryRow ──────────────────────────────────────────────────────────
 
-function FinanceEntryRow({ entry }: { entry: FinanceEntry }) {
+function FinanceEntryRow({
+  entry, onEdit, onDelete,
+}: {
+  entry: FinanceEntry;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}) {
   const isIncome = entry.type === "Income";
   return (
-    <div className="flex items-start gap-3 py-2.5 border-b border-white/5 last:border-0">
-      <div className={`w-4 h-4 rounded-sm shrink-0 flex items-center justify-center mt-0.5 ${
-        isIncome ? "bg-teal-500/20" : "bg-orange-500/20"
-      }`}>
-        <span className={`text-[8px] font-bold leading-none ${isIncome ? "text-teal-400" : "text-orange-400"}`}>
-          {isIncome ? "收" : "支"}
-        </span>
-      </div>
-      <div className="flex-1 min-w-0">
-        <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
-          isIncome
-            ? "bg-teal-500/15 text-teal-300 border-teal-500/25"
-            : "bg-orange-500/15 text-orange-300 border-orange-500/25"
+    <div className="py-2.5 border-b border-white/5 last:border-0">
+      <div className="flex items-start gap-3">
+        <div className={`w-4 h-4 rounded-sm shrink-0 flex items-center justify-center mt-0.5 ${
+          isIncome ? "bg-teal-500/20" : "bg-orange-500/20"
         }`}>
-          {isIncome ? "收入" : "支出"}
+          <span className={`text-[8px] font-bold leading-none ${isIncome ? "text-teal-400" : "text-orange-400"}`}>
+            {isIncome ? "收" : "支"}
+          </span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
+            isIncome
+              ? "bg-teal-500/15 text-teal-300 border-teal-500/25"
+              : "bg-orange-500/15 text-orange-300 border-orange-500/25"
+          }`}>
+            {isIncome ? "收入" : "支出"}
+          </span>
+          {entry.date && (
+            <p className="text-xs text-gray-600 mt-1">
+              {isIncome ? "收入日期" : "支出日期"}：{entry.date}
+            </p>
+          )}
+          {entry.note && <p className="text-xs text-gray-600 mt-0.5">備註：{entry.note}</p>}
+        </div>
+        <span className={`text-sm font-medium tabular-nums shrink-0 ${
+          isIncome ? "text-teal-400" : "text-orange-400"
+        }`}>
+          {isIncome ? "+" : "−"} {fmtCurrency(entry.amount)}
         </span>
-        {entry.date && (
-          <p className="text-xs text-gray-600 mt-1">
-            {isIncome ? "收入日期" : "支出日期"}：{entry.date}
-          </p>
-        )}
-        {entry.note && <p className="text-xs text-gray-600 mt-0.5">備註：{entry.note}</p>}
       </div>
-      <span className={`text-sm font-medium tabular-nums shrink-0 ${
-        isIncome ? "text-teal-400" : "text-orange-400"
-      }`}>
-        {isIncome ? "+" : "−"} {fmtCurrency(entry.amount)}
-      </span>
+      {(onEdit || onDelete) && (
+        <div className="flex gap-2 mt-2 ml-7">
+          {onEdit && (
+            <button type="button" onClick={onEdit}
+              className="flex-1 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-gray-400 hover:text-blue-300 hover:bg-blue-500/8 transition-all font-medium">
+              編輯
+            </button>
+          )}
+          {onDelete && (
+            <button type="button" onClick={onDelete}
+              className="flex-1 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-gray-400 hover:text-red-300 hover:bg-red-500/8 transition-all font-medium">
+              刪除
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── FinanceEntryEditForm ─────────────────────────────────────────────────────
+
+function FinanceEntryEditForm({
+  type, amount, date, note,
+  setType, setAmount, setDate, setNote,
+  onSave, onCancel,
+}: {
+  type: "Income" | "Expense";
+  amount: string; date: string; note: string;
+  setType: (v: "Income" | "Expense") => void;
+  setAmount: (v: string) => void;
+  setDate: (v: string) => void;
+  setNote: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const canSave = parseFloat(amount.replace(/,/g, "")) > 0;
+  return (
+    <div className="ml-7 mb-3 mt-1 rounded-xl bg-white/[0.04] border border-white/10 p-4 space-y-3">
+      <div className="flex gap-2">
+        {([["Income","收入","bg-teal-500/20 text-teal-300 border-teal-500/40"],
+           ["Expense","支出","bg-orange-500/20 text-orange-300 border-orange-500/40"]] as const).map(([k, l, cls]) => (
+          <button key={k} type="button" onClick={() => setType(k)}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+              type === k ? cls : "bg-white/5 text-gray-400 border-white/10"
+            }`}>{l}</button>
+        ))}
+      </div>
+      <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5">
+        <span className="text-gray-500 text-sm shrink-0">NT$</span>
+        <input type="text" inputMode="decimal" value={amount}
+          onChange={(e) => setAmount(e.target.value)} placeholder="0"
+          className="flex-1 bg-transparent text-white text-sm focus:outline-none placeholder-gray-700" />
+      </div>
+      <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
+        style={{ colorScheme: "dark" }} />
+      <input type="text" value={note} onChange={(e) => setNote(e.target.value)}
+        placeholder="備註（選填）"
+        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none" />
+      <div className="flex gap-2 pt-1">
+        <button type="button" onClick={onSave} disabled={!canSave}
+          className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-40 transition-all">
+          儲存
+        </button>
+        <button type="button" onClick={onCancel}
+          className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 text-sm font-semibold">
+          取消
+        </button>
+      </div>
     </div>
   );
 }
@@ -517,6 +595,14 @@ export function EditPage({
   const [confirmNote,       setConfirmNote]       = useState("");
   const [confirmSubmitting, setConfirmSubmitting] = useState(false);
 
+  // ── Linked Finance Entry edit / delete ────────────────────────────────────
+  const [editingLinkedEntryId,     setEditingLinkedEntryId]     = useState<string | null>(null);
+  const [editLinkedType,           setEditLinkedType]           = useState<"Income" | "Expense">("Income");
+  const [editLinkedAmount,         setEditLinkedAmount]         = useState("");
+  const [editLinkedDate,           setEditLinkedDate]           = useState("");
+  const [editLinkedNote,           setEditLinkedNote]           = useState("");
+  const [deleteConfirmLinkedEntry, setDeleteConfirmLinkedEntry] = useState<FinanceEntry | null>(null);
+
   // ── Linked Finance Records ────────────────────────────────────────────────
   const [linkedFinance, setLinkedFinance] = useState<FinanceEntry[]>(() =>
     loadFinanceEntries().filter((e) => e.sourceReminderId === reminder.id)
@@ -620,6 +706,53 @@ export function EditPage({
 
     setConfirmSubmitting(false);
     setConfirmingItemId(null);
+  }
+
+  // ── Linked Finance Entry edit / delete handlers ───────────────────────────
+
+  function handleStartEditLinkedEntry(entry: FinanceEntry) {
+    setEditingLinkedEntryId(entry.id);
+    setEditLinkedType(entry.type);
+    setEditLinkedAmount(String(entry.amount));
+    setEditLinkedDate(entry.date);
+    setEditLinkedNote(entry.note ?? "");
+    setConfirmingItemId(null);
+    setEditingItemId(null);
+    setShowAddUnified(false);
+  }
+
+  function handleSaveLinkedEntry() {
+    if (!editingLinkedEntryId) return;
+    const amt = parseFloat(editLinkedAmount.replace(/,/g, ""));
+    if (isNaN(amt) || amt <= 0) return;
+    const now = new Date().toISOString();
+    saveFinanceEntries(loadFinanceEntries().map((e) =>
+      e.id === editingLinkedEntryId
+        ? { ...e, type: editLinkedType, amount: amt, date: editLinkedDate,
+            note: editLinkedNote.trim() || undefined, updatedAt: now }
+        : e,
+    ));
+    setLinkedFinance((prev) => prev.map((e) =>
+      e.id === editingLinkedEntryId
+        ? { ...e, type: editLinkedType, amount: amt, date: editLinkedDate,
+            note: editLinkedNote.trim() || undefined, updatedAt: now }
+        : e,
+    ));
+    setEditingLinkedEntryId(null);
+  }
+
+  function handleDeleteLinkedEntry(entry: FinanceEntry) {
+    // If linked to a Financial Item via sourceFinancialItemId → restore it
+    if (entry.sourceFinancialItemId) {
+      setFinancialItems((prev) => prev.map((i) =>
+        i.id === entry.sourceFinancialItemId
+          ? { ...i, completed: false, completedDate: undefined }
+          : i,
+      ));
+    }
+    saveFinanceEntries(loadFinanceEntries().filter((e) => e.id !== entry.id));
+    setLinkedFinance((prev) => prev.filter((e) => e.id !== entry.id));
+    setDeleteConfirmLinkedEntry(null);
   }
 
   // ── Unified add handler ───────────────────────────────────────────────────
@@ -993,12 +1126,53 @@ export function EditPage({
               );
             })}
 
-            {/* ── FinanceEntries (Income/Expense 手動新增，排除由 confirm flow 產生者） ── */}
-            {linkedFinance
-              .filter((e) => !e.sourceFinancialItemId)
-              .map((entry) => (
-                <FinanceEntryRow key={entry.id} entry={entry} />
-              ))}
+            {/* ── FinanceEntries (所有 Income/Expense 紀錄，含確認收款產生者） ── */}
+            {linkedFinance.map((entry) => (
+              <div key={entry.id}>
+                <FinanceEntryRow
+                  entry={entry}
+                  onEdit={() => handleStartEditLinkedEntry(entry)}
+                  onDelete={() => setDeleteConfirmLinkedEntry(entry)}
+                />
+                {editingLinkedEntryId === entry.id && (
+                  <FinanceEntryEditForm
+                    type={editLinkedType}     amount={editLinkedAmount}
+                    date={editLinkedDate}     note={editLinkedNote}
+                    setType={setEditLinkedType}     setAmount={setEditLinkedAmount}
+                    setDate={setEditLinkedDate}     setNote={setEditLinkedNote}
+                    onSave={handleSaveLinkedEntry}
+                    onCancel={() => setEditingLinkedEntryId(null)}
+                  />
+                )}
+              </div>
+            ))}
+
+            {/* Delete confirm for linked Finance Entry */}
+            {deleteConfirmLinkedEntry && (
+              <div className="mt-2 rounded-xl border border-red-500/30 bg-red-500/[0.06] p-4 space-y-3">
+                <p className="text-sm text-red-300 font-semibold leading-snug">
+                  {deleteConfirmLinkedEntry.sourceFinancialItemId
+                    ? (deleteConfirmLinkedEntry.type === "Income"
+                        ? "刪除這筆實際收支後，原款項將恢復為待收。"
+                        : "刪除這筆實際收支後，原款項將恢復為待付。")
+                    : (deleteConfirmLinkedEntry.type === "Income"
+                        ? "確定刪除這筆收入紀錄？"
+                        : "確定刪除這筆支出紀錄？")}
+                </p>
+                <div className="flex gap-2">
+                  <button type="button"
+                    onClick={() => handleDeleteLinkedEntry(deleteConfirmLinkedEntry)}
+                    className="flex-1 py-2.5 rounded-xl bg-red-500/20 border border-red-500/30 text-red-300 font-semibold text-sm">
+                    確定刪除
+                  </button>
+                  <button type="button"
+                    onClick={() => setDeleteConfirmLinkedEntry(null)}
+                    className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 font-semibold text-sm">
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Unified add form */}

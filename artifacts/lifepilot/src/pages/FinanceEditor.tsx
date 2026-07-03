@@ -11,6 +11,8 @@ interface Props {
   onSave: (entry: FinanceEntry) => void;
   onDelete?: () => void;
   onCancel: () => void;
+  /** True when this entry was created by confirming a Financial Item */
+  isLinkedEntry?: boolean;
 }
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────
@@ -52,6 +54,7 @@ export function FinanceEditor({
   onSave,
   onDelete,
   onCancel,
+  isLinkedEntry,
 }: Props) {
   const isNew = entry === null;
 
@@ -66,6 +69,7 @@ export function FinanceEditor({
   const [source,            setSource]            = useState(entry?.source ?? "");
   const [merchant,          setMerchant]          = useState(entry?.merchant ?? "");
   const [note,              setNote]              = useState(entry?.note ?? "");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const { enabledCategories } = useCategoryStore();
 
@@ -83,28 +87,22 @@ export function FinanceEditor({
     if (!canSave) return;
     const now = new Date().toISOString();
     const saved: FinanceEntry = {
-      id:                entry?.id ?? crypto.randomUUID(),
+      id:                     entry?.id ?? crypto.randomUUID(),
       type,
-      title:             title.trim(),
+      title:                  title.trim(),
       amount,
       date,
       financialCategory,
-      myCategory:        myCategory.trim() || undefined,
-      source:            source.trim() || undefined,
-      merchant:          merchant.trim() || undefined,
-      note:              note.trim() || undefined,
-      createdAt:         entry?.createdAt ?? now,
-      updatedAt:         now,
-      sourceReminderId:  entry?.sourceReminderId,
+      myCategory:             myCategory.trim() || undefined,
+      source:                 source.trim() || undefined,
+      merchant:               merchant.trim() || undefined,
+      note:                   note.trim() || undefined,
+      createdAt:              entry?.createdAt ?? now,
+      updatedAt:              now,
+      sourceReminderId:       entry?.sourceReminderId,
+      sourceFinancialItemId:  entry?.sourceFinancialItemId,
     };
     onSave(saved);
-  }
-
-  function handleDelete() {
-    if (!onDelete) return;
-    if (window.confirm("確定要刪除這筆記帳紀錄嗎？刪除後無法復原。")) {
-      onDelete();
-    }
   }
 
   return (
@@ -271,14 +269,45 @@ export function FinanceEditor({
       </div>
 
       {/* Delete button (edit mode only) */}
-      {!isNew && onDelete && (
+      {!isNew && onDelete && !showDeleteConfirm && (
         <button
           type="button"
-          onClick={handleDelete}
+          onClick={() => setShowDeleteConfirm(true)}
           className="w-full mt-3 py-3.5 rounded-xl text-red-400 hover:bg-red-500/8 border border-red-500/20 text-sm font-semibold transition-all"
         >
           刪除這筆紀錄
         </button>
+      )}
+
+      {/* Inline delete confirmation */}
+      {showDeleteConfirm && (
+        <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/[0.06] p-4 space-y-3">
+          <p className="text-sm text-red-300 font-semibold leading-snug">
+            {isLinkedEntry
+              ? (type === "Income"
+                  ? "刪除這筆實際收支後，原款項將恢復為待收。"
+                  : "刪除這筆實際收支後，原款項將恢復為待付。")
+              : (type === "Income"
+                  ? "確定刪除這筆收入紀錄？"
+                  : "確定刪除這筆支出紀錄？")}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => { setShowDeleteConfirm(false); onDelete?.(); }}
+              className="flex-1 py-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-300 font-semibold text-sm transition-all"
+            >
+              確定刪除
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(false)}
+              className="flex-1 py-3 rounded-xl bg-white/5 border border-white/10 text-gray-300 font-semibold text-sm transition-all"
+            >
+              取消
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
