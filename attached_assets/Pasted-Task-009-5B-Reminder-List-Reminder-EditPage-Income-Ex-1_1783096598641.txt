@@ -1,0 +1,491 @@
+Task-009.5B：提醒事項快速記帳與收支關聯
+
+目前專案已完成：
+
+- Reminder List
+- Reminder EditPage
+- 收支中心
+- Income / Expense 記帳功能
+- Finance Store
+- 月份統計
+- 分類管理
+- 底部導覽
+- LocalStorage 保存
+
+本次任務目標：
+
+讓使用者可以從「提醒事項」直接建立收入或支出紀錄，
+並將該收支紀錄與原 Reminder 建立關聯。
+
+本次只做：
+
+1. Reminder Card 加入「＋記帳」
+2. Quick Finance Editor
+3. 收入／支出選擇
+4. 自動帶入事項資料
+5. sourceReminderId 關聯
+6. 已關聯收支簡單顯示
+
+不要做圖表。
+不要做預算。
+不要修改 AI Parser。
+不要大幅重構 App.tsx。
+
+────────────────
+
+一、Reminder Card 加入「＋記帳」
+
+在提醒事項列表的每張 Reminder Card 加入簡潔操作：
+
+＋ 記帳
+
+不要在卡片上直接固定顯示：
+
+記收入
+或
+記支出
+
+所有事項統一使用：
+
+＋ 記帳
+
+點擊後開啟 Quick Finance Editor。
+
+注意：
+
+如果 Reminder 本身 type 已經是 Income 或 Expense，
+不要再次顯示「＋記帳」，
+避免重複建立。
+
+────────────────
+
+二、Quick Finance Editor
+
+點擊「＋記帳」後，
+開啟 Modal、Drawer 或目前專案一致的 Editor UI。
+
+第一個選擇：
+
+收入
+支出
+
+使用 segmented control。
+
+使用者可以自由切換。
+
+不要限制：
+
+Medical 只能支出
+AirportTransfer 只能收入
+
+因為同一事項可能同時存在收入與支出。
+
+────────────────
+
+三、依事項類型提供預設建議
+
+只提供預設值，
+使用者仍可以自由切換。
+
+Medical：
+預設支出
+
+Shopping：
+預設支出
+
+Payment：
+預設支出
+
+Course：
+預設支出
+
+AirportTransfer：
+預設收入
+
+General：
+不預選，或依目前 UI 最安全方式讓使用者選擇。
+
+預設只是 UI 建議，
+不能限制使用者切換。
+
+────────────────
+
+四、自動帶入資料
+
+從 Reminder 開啟 Quick Finance Editor 時，
+自動帶入：
+
+sourceReminderId
+date
+title
+
+例如：
+
+Reminder：
+帶媽媽看骨科
+日期：2026/07/15
+
+Quick Finance Editor 預設：
+
+類型：支出
+標題：帶媽媽看骨科
+日期：2026/07/15
+
+使用者可以修改標題，例如：
+
+掛號費
+藥費
+停車費
+
+────────────────
+
+五、AirportTransfer 金額處理
+
+AirportTransfer 可能已有：
+
+接送費用：1000
+
+開啟「＋記帳」時：
+
+如果預設選擇收入，
+可以將 1000 預填到金額欄位。
+
+但是：
+
+不要在開啟 Editor 時自動建立 Finance Record。
+不要在 Reminder 建立時自動建立 Income。
+不要重複記帳。
+
+必須由使用者確認並按「儲存」後，
+才建立 Finance Record。
+
+如果使用者切換為支出，
+不要強制保留接送費用金額，
+避免誤把接送收入金額當成支出。
+
+────────────────
+
+六、Quick Finance Editor 欄位
+
+欄位：
+
+收入／支出
+標題
+金額
+日期
+記帳分類
+我的群組／我的分類（依目前 UI 名稱）
+備註
+
+收入時可以顯示：
+
+收入來源（選填）
+
+支出時可以顯示：
+
+商家或地點（選填）
+
+儲存
+取消
+
+────────────────
+
+七、sourceReminderId 關聯
+
+建立 Finance Record 時：
+
+sourceReminderId = 原 Reminder.id
+
+例如：
+
+{
+  id: "...",
+  type: "Expense",
+  title: "掛號費",
+  amount: 150,
+  date: "2026-07-15",
+  financialCategory: "醫療",
+  sourceReminderId: "reminder-xxx"
+}
+
+不要複製整份 Reminder Data 到 Finance Record。
+
+只保存必要 Finance Data 與 sourceReminderId。
+
+────────────────
+
+八、一個 Reminder 可以有多筆收支
+
+必須支援：
+
+一個 Reminder
+→ 多筆 Finance Records
+
+例如醫療事項：
+
+帶媽媽看骨科
+
+關聯：
+
+支出｜掛號費｜150
+支出｜藥費｜320
+支出｜停車費｜60
+收入｜保險理賠｜500
+
+不要限制一個 Reminder 只能記帳一次。
+
+────────────────
+
+九、Reminder Card 顯示簡單關聯摘要
+
+如果 Reminder 沒有關聯收支：
+
+顯示：
+
+＋ 記帳
+
+如果已有關聯收支：
+
+仍保留：
+
+＋ 記帳
+
+並可以簡單顯示：
+
+已記帳 3 筆
+
+或：
+
+收入 NT$ 1,000
+支出 NT$ 140
+
+保持簡潔。
+
+不要在 Reminder Card 展開完整收支列表。
+
+────────────────
+
+十、EditPage 顯示相關收支
+
+在 Reminder EditPage 下方加入：
+
+相關收支
+
+如果沒有資料：
+
+尚無相關收支紀錄
+
+＋ 記帳
+
+如果已有資料：
+
+相關收支
+
+掛號費        - NT$ 150
+藥費          - NT$ 320
+保險理賠      + NT$ 500
+
+＋ 新增記帳
+
+點擊單筆收支可以進入目前已有的 Finance Editor。
+
+不要另外建立第二套 Finance EditPage。
+
+請重用目前收支中心的編輯流程。
+
+────────────────
+
+十一、刪除 Reminder 的安全處理
+
+如果 Reminder 沒有關聯 Finance Record：
+
+維持目前刪除流程。
+
+如果 Reminder 有關聯 Finance Records：
+
+刪除 Reminder 前提示：
+
+「此事項有相關收支紀錄。刪除事項後，收支紀錄將保留，但會解除事項關聯。」
+
+選項：
+
+取消
+刪除事項
+
+確認後：
+
+1. 刪除 Reminder。
+2. Finance Records 保留。
+3. 對應 Finance Records 的 sourceReminderId 清除或設為 undefined。
+4. 不要刪除收支紀錄。
+
+────────────────
+
+十二、刪除 Finance Record
+
+如果刪除某筆 Finance Record：
+
+只刪除該筆收支。
+
+不要刪除原 Reminder。
+
+Reminder Card 的：
+
+已記帳 X 筆
+
+與收入／支出摘要要立即更新。
+
+────────────────
+
+十三、LocalStorage
+
+確認：
+
+1. Finance Record 儲存後重新整理仍存在。
+2. sourceReminderId 重新整理後仍存在。
+3. Reminder 與 Finance Record 關聯可以重新建立。
+4. 不要清除舊 Reminder。
+5. 不要破壞舊 Finance Records。
+6. sourceReminderId 必須保持 optional，舊資料沒有此欄位仍可正常讀取。
+
+────────────────
+
+十四、測試 A：Medical
+
+Reminder：
+
+帶媽媽看骨科
+2026/07/15
+10:00
+
+點：
+
+＋ 記帳
+
+建立：
+
+支出
+掛號費
+150
+醫療
+
+再次：
+
+＋ 記帳
+
+建立：
+
+支出
+停車費
+60
+交通
+
+預期：
+
+Reminder 顯示已記帳 2 筆。
+
+收支中心顯示兩筆支出。
+
+────────────────
+
+十五、測試 B：AirportTransfer
+
+Reminder：
+
+CI173 接機
+接送費用 1000
+
+點：
+
+＋ 記帳
+
+預設：
+
+收入
+金額：1000
+
+修改標題：
+
+接送收入
+
+儲存。
+
+再次點：
+
+＋ 記帳
+
+切換：
+
+支出
+
+建立：
+
+停車費
+100
+
+預期：
+
+同一 Reminder 關聯：
+
+收入 1000
+支出 100
+
+────────────────
+
+十六、測試 C：刪除 Reminder
+
+建立一個 Reminder，
+並建立兩筆關聯收支。
+
+刪除 Reminder。
+
+預期：
+
+Reminder 被刪除。
+
+兩筆 Finance Records 仍存在於收支中心。
+
+sourceReminderId 被解除。
+
+────────────────
+
+十七、測試 D：重新整理
+
+建立 Reminder 關聯收支後重新整理。
+
+預期：
+
+Reminder Card 的已記帳筆數仍正確。
+
+EditPage 的相關收支仍正確。
+
+收支中心資料仍存在。
+
+────────────────
+
+重要限制：
+
+- 不要修改 Groq API。
+- 不要修改 /api/parse。
+- 不要修改 AI Parser。
+- 不要修改規則 Parser fallback。
+- 不要修改 Category Management。
+- 不要修改 ReminderEditor。
+- 不要加入圖表。
+- 不要加入預算。
+- 不要自動建立收支紀錄。
+- 不要刪除 Reminder 時連帶刪除 Finance Record。
+- 不要清除 LocalStorage。
+- 不要大幅重構 App.tsx。
+- 優先重用現有 Finance Editor。
+- 不要自動開始下一個 Task。
+
+完成後請全程使用繁體中文說明：
+
+1. 修改或新增哪些檔案。
+2. Quick Finance Editor 如何運作。
+3. sourceReminderId 如何建立關聯。
+4. 一個 Reminder 如何支援多筆收支。
+5. AirportTransfer 金額如何預填但不自動記帳。
+6. Reminder 刪除後 Finance Record 如何保留。
+7. 如何測試重新整理後關聯仍存在。
