@@ -1388,7 +1388,11 @@ export default function App() {
         />
       )}
       {activePage === "finance" && (
-        <FinancePage reminders={savedReminders} />
+        <FinancePage
+          reminders={savedReminders}
+          onEditReminder={handleOpenEdit}
+          onRemindersChange={setSavedReminders}
+        />
       )}
       {activePage === "my" && (
         <MyPage onOpenCategoryMgmt={() => setShowCategoryMgmt(true)} />
