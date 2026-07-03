@@ -402,6 +402,9 @@ export function EditPage({
           <FieldRow label="金額">
             <TextInput value={price} onChange={setPrice} placeholder="金額（元）" />
           </FieldRow>
+          <FieldRow label="我的分類">
+            <CategorySelect type={t} value={category} onChange={setCategory} />
+          </FieldRow>
           <FieldRow label="備註">
             <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
           </FieldRow>
