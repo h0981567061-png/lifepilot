@@ -742,13 +742,16 @@ export function EditPage({
   }
 
   function handleDeleteLinkedEntry(entry: FinanceEntry) {
-    // If linked to a Financial Item via sourceFinancialItemId → restore it
+    // If linked to a Financial Item → restore completed → false and persist
     if (entry.sourceFinancialItemId) {
-      setFinancialItems((prev) => prev.map((i) =>
+      const restoredItems = financialItems.map((i) =>
         i.id === entry.sourceFinancialItemId
           ? { ...i, completed: false, completedDate: undefined }
           : i,
-      ));
+      );
+      setFinancialItems(restoredItems);
+      // CRITICAL: persist to localStorage so the restored state survives remount
+      updateReminder(reminder.id, { financialItems: restoredItems });
     }
     saveFinanceEntries(loadFinanceEntries().filter((e) => e.id !== entry.id));
     setLinkedFinance((prev) => prev.filter((e) => e.id !== entry.id));
@@ -1126,8 +1129,10 @@ export function EditPage({
               );
             })}
 
-            {/* ── FinanceEntries (所有 Income/Expense 紀錄，含確認收款產生者） ── */}
-            {linkedFinance.map((entry) => (
+            {/* ── FinanceEntries (只顯示直接新增的，避免與 FinancialItemRow 重複) ── */}
+            {linkedFinance
+              .filter((e) => !financialItems.some((fi) => fi.id === e.sourceFinancialItemId))
+              .map((entry) => (
               <div key={entry.id}>
                 <FinanceEntryRow
                   entry={entry}

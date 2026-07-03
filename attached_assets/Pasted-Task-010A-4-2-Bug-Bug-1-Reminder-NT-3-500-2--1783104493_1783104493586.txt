@@ -1,0 +1,300 @@
+Task-010A.4.2：修正刪除實際收支後，已收／已付狀態未同步恢復的 Bug
+
+目前發現明確 Bug。
+
+重現案例：
+
+1. Reminder 有一筆待收 NT$ 3,500
+2. 使用者確認已收款
+3. Financial Item 顯示：
+   ✓ 已收 + NT$ 3,500
+4. 同時建立對應 Income Finance Record
+5. 使用者刪除該 Income Finance Record
+6. Income Record 已刪除
+7. 但是 Reminder Editor 上仍然顯示：
+   ✓ 已收 + NT$ 3,500
+
+這是錯誤狀態。
+
+正確行為應為：
+
+刪除由待收完成流程產生的 Income 後：
+
+✓ 已收 + NT$ 3,500
+
+必須立即恢復為：
+
+○ 待收 NT$ 3,500
+
+同理：
+
+刪除由待付完成流程產生的 Expense 後：
+
+✓ 已付 - NT$ X
+
+必須立即恢復為：
+
+○ 待付 NT$ X
+
+────────────────
+
+一、先找出真正原因，不要直接用 UI 隱藏
+
+請檢查目前：
+
+Financial Item
+Finance Record
+
+完成流程建立的唯一關聯方式。
+
+確認刪除 Finance Record 時：
+
+是否真的找到正確 Financial Item。
+
+不要只刪除 Finance Record。
+
+如果 Finance Record 是由 Financial Item 完成流程建立：
+
+刪除 Income / Expense 時必須同步：
+
+financialItem.completed = false
+
+financialItem.completedDate = undefined 或清空
+
+如果目前還有其他完成欄位，
+請依現有資料結構同步恢復。
+
+不要只在畫面上 hide 已收項目。
+
+────────────────
+
+二、禁止用金額或日期猜測關聯
+
+不要使用：
+
+amount 相同
+date 相同
+note 相同
+sourceReminderId 相同
+
+單獨作為 Financial Item 配對依據。
+
+因為同一 Reminder 可能有：
+
+待收 3500
+待收 3500
+
+或：
+
+待付 100
+待付 100
+
+必須使用目前已有的唯一 Financial Item ↔ Finance Record 關聯欄位。
+
+如果目前 Finance Record 沒有可靠的 Financial Item 關聯 id：
+
+請先回報目前資料結構與缺少的欄位。
+
+只做最小必要修正。
+
+不要大幅重構 Finance Store。
+
+────────────────
+
+三、刪除後 UI 必須立即同步
+
+刪除由待收完成產生的 Income 後：
+
+收支清單立即從：
+
+✓ 已收 + NT$ 3,500
+
+變成：
+
+○ 待收 NT$ 3,500
+
+不需要重新整理頁面。
+
+收支主頁同步：
+
+收入總額減少 3500
+
+待收總額增加 3500
+
+待收清單重新出現該筆款項。
+
+────────────────
+
+四、待付同樣處理
+
+刪除由待付完成產生的 Expense：
+
+Editor：
+
+✓ 已付 - NT$ 2,000
+
+立即恢復：
+
+○ 待付 NT$ 2,000
+
+收支主頁：
+
+支出總額減少 2000
+
+待付總額增加 2000
+
+待付清單重新出現。
+
+────────────────
+
+五、直接新增的收入／支出不能產生待收待付
+
+如果 Finance Record 是直接透過：
+
+＋ 新增款項
+→ 收入
+
+建立，
+
+刪除後：
+
+只刪除 Income。
+
+不要建立待收。
+
+如果是：
+
+＋ 新增款項
+→ 支出
+
+刪除後：
+
+只刪除 Expense。
+
+不要建立待付。
+
+────────────────
+
+六、檢查目前畫面中的重複顯示邏輯
+
+目前同一收支區塊會同時顯示：
+
+Financial Items
+Finance Records
+
+請確認：
+
+由 Financial Item 完成產生的 Finance Record，
+在 Editor 合併清單中不要重複顯示成：
+
+✓ 已收 +3500
+收入 +3500
+
+應只顯示一次：
+
+✓ 已收 +3500
+
+但是直接新增的 Income 正常顯示：
+
+收入 +3500
+
+直接新增的 Expense 正常顯示：
+
+支出 -100
+
+────────────────
+
+七、測試目前實際 Bug
+
+測試 A：
+
+建立：
+待收 3500
+
+確認已收。
+
+預期：
+✓ 已收 +3500
+Income Store 有一筆 3500
+
+刪除該 Income。
+
+預期：
+○ 待收 3500
+Income Store 不再有該筆
+待收總額增加 3500
+收入總額減少 3500
+
+────────────────
+
+測試 B：
+
+建立：
+待付 2000
+
+確認已付。
+
+刪除產生的 Expense。
+
+預期：
+○ 待付 2000
+Expense Store 不再有該筆
+待付總額增加 2000
+支出總額減少 2000
+
+────────────────
+
+測試 C：
+
+直接新增：
+收入 1200
+
+刪除。
+
+預期：
+收入 1200 消失
+不產生待收 1200
+
+────────────────
+
+測試 D：
+
+同一 Reminder 建立兩筆：
+待收 3500
+待收 3500
+
+分別完成。
+
+刪除其中一筆對應 Income。
+
+預期：
+只有正確對應的其中一筆恢復待收。
+另一筆仍維持已收。
+
+────────────────
+
+本次不要修改：
+
+AI Parser
+Groq API
+Reminder Editor 架構
+收支頁 Tab
+Category Store
+Bottom Navigation
+LocalStorage key
+既有 Reminder 資料
+
+不要大幅重構 App.tsx。
+
+完成後請回報：
+
+1. Bug 根本原因。
+2. Finance Record 如何找到來源 Financial Item。
+3. 刪除 Income 後如何恢復待收。
+4. 刪除 Expense 後如何恢復待付。
+5. 直接新增收入／支出是否不受影響。
+6. 同金額多筆款項測試是否正確。
+7. 是否需要重新整理才能同步。
+8. TypeScript 是否通過。
+
+完成後停止。
