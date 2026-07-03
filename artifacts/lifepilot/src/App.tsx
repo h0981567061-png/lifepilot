@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { isAIConfigured, parseWithAI, type AIEvent } from "./aiParser";
 
 // ─── Course parser types & helpers ───────────────────────────────────────────
 
@@ -1051,6 +1052,9 @@ export default function App() {
   const [calendarItems, setCalendarItems] = useState<CalendarItem[]>([]);
   const [analyzed, setAnalyzed] = useState(false);
   const [error, setError] = useState("");
+  const [aiMode, setAiMode] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSource, setAiSource] = useState<"ai" | "rule" | null>(null);
 
   function resetParsed() {
     setEvents([]);
@@ -1063,19 +1067,140 @@ export default function App() {
     setCalendarItems([]);
   }
 
-  function handleAnalyze() {
-    const trimmed = message.trim();
-    if (!trimmed) {
-      setError("請先貼上 LINE 訊息內容。");
-      return;
-    }
-    setError("");
-    resetParsed();
+  // ── AI type → MessageTypeName ──────────────────────────────────────────────
+  function aiTypeToMessageType(type: string): MessageTypeName {
+    const map: Record<string, MessageTypeName> = {
+      "Course":           "Course",
+      "Airport Transfer": "Airport Transfer",
+      "Medical":          "Medical",
+      "Shopping":         "Shopping",
+      "Payment":          "Payment",
+      "Work":             "Pending",
+      "Family":           "Pending",
+      "Pending":          "Pending",
+    };
+    return map[type] ?? "Pending";
+  }
 
+  // ── Map AI events → existing state arrays ──────────────────────────────────
+  function mapAIEvents(aiEvents: AIEvent[]): {
+    parsedEvents: Event[];
+    parsedTransfers: AirportTransfer[];
+    parsedMedical: MedicalItem[];
+    parsedShopping: ShoppingItem[];
+    parsedPayment: PaymentItem[];
+    parsedPending: PendingItem[];
+    primaryType: MessageTypeName;
+    primaryLabel: string;
+    avgConfidence: number;
+  } {
+    const parsedEvents: Event[] = [];
+    const parsedTransfers: AirportTransfer[] = [];
+    const parsedMedical: MedicalItem[] = [];
+    const parsedShopping: ShoppingItem[] = [];
+    const parsedPayment: PaymentItem[] = [];
+    const parsedPending: PendingItem[] = [];
+    let totalConfidence = 0;
+    let primaryType: MessageTypeName = "Pending";
+    let isFirst = true;
+
+    let evIdx = 1, trIdx = 1, mdIdx = 1, shIdx = 1, pyIdx = 1, pdIdx = 1;
+
+    for (const e of aiEvents) {
+      totalConfidence += typeof e.confidence === "number" ? e.confidence : 50;
+      const mtype = aiTypeToMessageType(e.type);
+      if (isFirst) { primaryType = mtype; isFirst = false; }
+
+      switch (mtype) {
+        case "Course":
+          parsedEvents.push({
+            id: evIdx++,
+            title: e.title ?? "（無標題）",
+            date: e.date ?? "",
+            time: e.startTime ?? "",
+            location: e.location ?? "",
+            keepInLifePilot: true,
+            addToCalendar: false,
+          });
+          break;
+        case "Airport Transfer":
+          parsedTransfers.push({
+            id: trIdx++,
+            time: e.startTime ?? "",
+            flight: e.flightNumber ?? "",
+            type: e.transferType ?? "",
+            district: e.district ?? "",
+            vehicle: e.vehicleType ?? "",
+            price: e.price ?? "",
+            notes: e.notes ?? "",
+            selected: true,
+          });
+          break;
+        case "Medical":
+          parsedMedical.push({
+            id: mdIdx++,
+            date: e.date ?? "",
+            time: e.startTime ?? "",
+            hospital: e.hospital ?? e.location ?? "",
+            department: e.department ?? "",
+            notes: e.notes ?? "",
+            selected: true,
+          });
+          break;
+        case "Shopping":
+          parsedShopping.push({
+            id: shIdx++,
+            date: e.date ?? "",
+            lines: e.items?.length ? e.items : (e.notes ? [e.notes] : []),
+            amount: e.amount ?? "",
+            selected: true,
+          });
+          break;
+        case "Payment":
+          parsedPayment.push({
+            id: pyIdx++,
+            name: e.title ?? "",
+            dueDate: e.dueDate ?? "",
+            amount: e.amount ?? "",
+            account: "",
+            notes: e.notes ?? "",
+            selected: true,
+          });
+          break;
+        default:
+          parsedPending.push({
+            id: pdIdx++,
+            text: [e.title, e.date, e.notes, ...(e.items ?? [])]
+              .filter(Boolean).join("\n"),
+            selected: true,
+          });
+      }
+    }
+
+    const LABEL_MAP: Record<MessageTypeName, string> = {
+      "Airport Transfer": "接送機",
+      "Course":           "課程",
+      "Medical":          "醫療",
+      "Shopping":         "購物",
+      "Payment":          "付款",
+      "Pending":          "待確認",
+    };
+
+    return {
+      parsedEvents, parsedTransfers, parsedMedical,
+      parsedShopping, parsedPayment, parsedPending,
+      primaryType,
+      primaryLabel: LABEL_MAP[primaryType] ?? "待確認",
+      avgConfidence: aiEvents.length > 0
+        ? Math.round(totalConfidence / aiEvents.length) : 0,
+    };
+  }
+
+  // ── Rule-based analyze (shared by both paths) ───────────────────────────────
+  function runLocalParsers(trimmed: string) {
     const detection = detectMessageType(trimmed);
     setDetectionResult(detection);
     setParserType(detection.type);
-
     switch (detection.type) {
       case "Airport Transfer":
         setTransfers(parseAirportTransfers(trimmed).map((t) => ({ ...t, selected: true })));
@@ -1095,9 +1220,53 @@ export default function App() {
       case "Pending":
       default:
         setPendingItems(parsePending(trimmed));
-        break;
+    }
+  }
+
+  async function handleAnalyze() {
+    const trimmed = message.trim();
+    if (!trimmed) {
+      setError("請先貼上 LINE 訊息內容。");
+      return;
+    }
+    setError("");
+    resetParsed();
+    setAiSource(null);
+
+    // ── AI path ──────────────────────────────────────────────────────────────
+    if (aiMode && isAIConfigured()) {
+      setAiLoading(true);
+      try {
+        const result = await parseWithAI(trimmed, new Date());
+        const mapped = mapAIEvents(result.events);
+        setEvents(mapped.parsedEvents);
+        setTransfers(mapped.parsedTransfers);
+        setMedicalItems(mapped.parsedMedical);
+        setShoppingItems(mapped.parsedShopping);
+        setPaymentItems(mapped.parsedPayment);
+        setPendingItems(mapped.parsedPending);
+        setParserType(mapped.primaryType);
+        setDetectionResult({
+          type: mapped.primaryType,
+          label: mapped.primaryLabel,
+          confidence: mapped.avgConfidence,
+          color: "blue",
+        });
+        setAiSource("ai");
+        setAnalyzed(true);
+        return;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("AI parsing failed, falling back to local parsers:", msg);
+        setError(`AI 解析失敗，已改用規則模式：${msg.slice(0, 80)}`);
+      } finally {
+        setAiLoading(false);
+      }
     }
 
+    // ── Rule-based fallback (also default when aiMode is off) ─────────────────
+    setAiSource("rule");
+    runLocalParsers(trimmed);
     setAnalyzed(true);
   }
 
@@ -1121,6 +1290,15 @@ export default function App() {
   }
 
   function handleSelectAll() {
+    if (aiSource === "ai") {
+      setTransfers((p) => p.map((t) => ({ ...t, selected: true })));
+      setEvents((p) => p.map((e) => ({ ...e, keepInLifePilot: true })));
+      setMedicalItems((p) => p.map((m) => ({ ...m, selected: true })));
+      setShoppingItems((p) => p.map((s) => ({ ...s, selected: true })));
+      setPaymentItems((p) => p.map((x) => ({ ...x, selected: true })));
+      setPendingItems((p) => p.map((x) => ({ ...x, selected: true })));
+      return;
+    }
     switch (parserType) {
       case "Airport Transfer": setTransfers((p) => p.map((t) => ({ ...t, selected: true }))); break;
       case "Course":           setEvents((p) => p.map((e) => ({ ...e, keepInLifePilot: true }))); break;
@@ -1132,6 +1310,15 @@ export default function App() {
   }
 
   function handleClearAll() {
+    if (aiSource === "ai") {
+      setTransfers((p) => p.map((t) => ({ ...t, selected: false })));
+      setEvents((p) => p.map((e) => ({ ...e, keepInLifePilot: false })));
+      setMedicalItems((p) => p.map((m) => ({ ...m, selected: false })));
+      setShoppingItems((p) => p.map((s) => ({ ...s, selected: false })));
+      setPaymentItems((p) => p.map((x) => ({ ...x, selected: false })));
+      setPendingItems((p) => p.map((x) => ({ ...x, selected: false })));
+      return;
+    }
     switch (parserType) {
       case "Airport Transfer": setTransfers((p) => p.map((t) => ({ ...t, selected: false }))); break;
       case "Course":           setEvents((p) => p.map((e) => ({ ...e, keepInLifePilot: false }))); break;
@@ -1158,6 +1345,10 @@ export default function App() {
 
   // ── Derived counts ──
   const totalCount = (() => {
+    if (aiSource === "ai") {
+      return transfers.length + events.length + medicalItems.length +
+        shoppingItems.length + paymentItems.length + pendingItems.length;
+    }
     switch (parserType) {
       case "Airport Transfer": return transfers.length;
       case "Course":           return events.length;
@@ -1170,6 +1361,14 @@ export default function App() {
   })();
 
   const selectedCount = (() => {
+    if (aiSource === "ai") {
+      return transfers.filter((t) => t.selected).length +
+        events.filter((e) => e.keepInLifePilot).length +
+        medicalItems.filter((m) => m.selected).length +
+        shoppingItems.filter((s) => s.selected).length +
+        paymentItems.filter((p) => p.selected).length +
+        pendingItems.filter((p) => p.selected).length;
+    }
     switch (parserType) {
       case "Airport Transfer": return transfers.filter((t) => t.selected).length;
       case "Course":           return events.filter((e) => e.keepInLifePilot).length;
@@ -1240,11 +1439,43 @@ export default function App() {
 
         {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
 
+        {/* ── AI mode toggle ── */}
+        <div className="flex items-center justify-between mt-4">
+          <button
+            onClick={() => setAiMode((m) => !m)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border transition-all duration-150 ${
+              aiMode
+                ? "border-blue-500/40 bg-blue-500/10 text-blue-300"
+                : "border-white/10 bg-white/5 text-gray-400 hover:bg-white/5"
+            }`}
+          >
+            <span>⚡ AI 解析</span>
+            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${aiMode ? "bg-blue-500/20 text-blue-300" : "bg-white/10 text-gray-500"}`}>
+              {aiMode ? "開啟" : "關閉"}
+            </span>
+            {aiMode && !isAIConfigured() && (
+              <span className="text-amber-400/70 text-xs ml-1">（需設定）</span>
+            )}
+          </button>
+        </div>
+
+        {aiMode && !isAIConfigured() && (
+          <div className="mt-3 text-sm text-amber-400/80 bg-amber-500/5 border border-amber-500/20 rounded-xl px-4 py-3">
+            <p className="font-medium mb-1">啟用 AI 解析需要設定 API 金鑰</p>
+            <p className="text-amber-400/60 text-xs leading-relaxed">
+              在 Replit Secrets 新增{" "}
+              <code className="bg-amber-500/10 px-1.5 py-0.5 rounded font-mono">VITE_OPENAI_API_KEY</code>，
+              重新載入頁面後即可啟用真正的 AI 解析。
+            </p>
+          </div>
+        )}
+
         <button
           onClick={handleAnalyze}
-          className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold text-base transition-all duration-150 shadow-lg shadow-blue-600/20 mt-4 mb-10"
+          disabled={aiLoading}
+          className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:bg-blue-600/40 disabled:cursor-not-allowed text-white font-semibold text-base transition-all duration-150 shadow-lg shadow-blue-600/20 mt-4 mb-10"
         >
-          Analyze
+          {aiLoading ? "AI 解析中…" : "Analyze"}
         </button>
 
         {analyzed && (
@@ -1253,11 +1484,23 @@ export default function App() {
             {detectionResult && (
               <div className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-5 flex flex-col gap-3">
                 <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold">偵測類型</p>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <span className={`text-2xl font-bold ${accentText(accentColor)}`}>
                     {detectionResult.label}
                   </span>
-                  <span className="text-sm text-gray-500">({detectionResult.type})</span>
+                  {aiSource === "ai" && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-300 font-medium">
+                      AI 解析
+                    </span>
+                  )}
+                  {aiSource === "rule" && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-gray-500">
+                      規則解析
+                    </span>
+                  )}
+                  {aiSource !== "ai" && (
+                    <span className="text-sm text-gray-500">({detectionResult.type})</span>
+                  )}
                 </div>
                 <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold mt-1">信心度</p>
                 <div className="flex items-center gap-3">
@@ -1283,7 +1526,7 @@ export default function App() {
                     <h2 className="text-lg font-semibold text-white">
                       找到{" "}
                       <span className={accentText(accentColor)}>{totalCount}</span>{" "}
-                      {typeLabel[parserType]}
+                      {aiSource === "ai" ? "個事項" : typeLabel[parserType]}
                     </h2>
                     <p className="text-sm text-gray-500 mt-0.5">
                       已選取 {selectedCount} / {totalCount}
@@ -1305,24 +1548,24 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Cards */}
+                {/* Cards — in AI mode render every populated type */}
                 <div className="flex flex-col gap-3 mb-8">
-                  {parserType === "Airport Transfer" && transfers.map((t) => (
+                  {(parserType === "Airport Transfer" || aiSource === "ai") && transfers.length > 0 && transfers.map((t) => (
                     <AirportTransferCard key={t.id} transfer={t} onToggle={handleToggleTransfer} />
                   ))}
-                  {parserType === "Course" && events.map((e) => (
+                  {(parserType === "Course" || aiSource === "ai") && events.length > 0 && events.map((e) => (
                     <EventCard key={e.id} event={e} onToggle={handleToggleEvent} />
                   ))}
-                  {parserType === "Medical" && medicalItems.map((m) => (
+                  {(parserType === "Medical" || aiSource === "ai") && medicalItems.length > 0 && medicalItems.map((m) => (
                     <MedicalCard key={m.id} item={m} onToggle={handleToggleMedical} />
                   ))}
-                  {parserType === "Shopping" && shoppingItems.map((s) => (
+                  {(parserType === "Shopping" || aiSource === "ai") && shoppingItems.length > 0 && shoppingItems.map((s) => (
                     <ShoppingCard key={s.id} item={s} onToggle={handleToggleShopping} />
                   ))}
-                  {parserType === "Payment" && paymentItems.map((p) => (
+                  {(parserType === "Payment" || aiSource === "ai") && paymentItems.length > 0 && paymentItems.map((p) => (
                     <PaymentCard key={p.id} item={p} onToggle={handleTogglePayment} />
                   ))}
-                  {parserType === "Pending" && pendingItems.map((p) => (
+                  {(parserType === "Pending" || aiSource === "ai") && pendingItems.length > 0 && pendingItems.map((p) => (
                     <PendingCard key={p.id} item={p} onToggle={handleTogglePending} />
                   ))}
                 </div>
@@ -1410,7 +1653,7 @@ export default function App() {
               </>
             ) : (
               <p className="text-sm text-gray-500 mt-2">
-                {emptyHint[parserType]}
+                {aiSource === "ai" ? "AI 未找到任何可解析的事項。" : emptyHint[parserType]}
               </p>
             )}
           </>
