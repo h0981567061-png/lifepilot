@@ -3,7 +3,6 @@ import type { Reminder, ReminderNotification } from "../store";
 import { normalizeDate } from "../utils";
 import { TYPE_LABEL, type AllType } from "../previewTypes";
 import { ReminderEditor } from "../components/ReminderEditor";
-import { CategorySelect } from "../components/CategorySelect";
 
 // ── UI primitives ─────────────────────────────────────────────────────────────
 
@@ -304,9 +303,7 @@ export function EditPage({
           <FieldRow label="付款名稱">
             <TextInput value={title} onChange={setTitle} placeholder="付款名稱" />
           </FieldRow>
-          <FieldRow label="我的分類">
-            <CategorySelect type={t} value={category} onChange={setCategory} />
-          </FieldRow>
+
           <FieldRow label="截止日期">
             <DateField value={dueDate} onChange={setDueDate} />
           </FieldRow>
@@ -335,9 +332,7 @@ export function EditPage({
           <FieldRow label="課程名稱">
             <TextInput value={title} onChange={setTitle} placeholder="課程名稱" />
           </FieldRow>
-          <FieldRow label="我的分類">
-            <CategorySelect type={t} value={category} onChange={setCategory} />
-          </FieldRow>
+
           <FieldRow label="日期">
             <DateField value={date} onChange={setDate} />
           </FieldRow>
@@ -402,9 +397,7 @@ export function EditPage({
           <FieldRow label="金額">
             <TextInput value={price} onChange={setPrice} placeholder="金額（元）" />
           </FieldRow>
-          <FieldRow label="我的分類">
-            <CategorySelect type={t} value={category} onChange={setCategory} />
-          </FieldRow>
+
           <FieldRow label="備註">
             <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
           </FieldRow>
@@ -420,9 +413,7 @@ export function EditPage({
           <FieldRow label="事由">
             <TextInput value={title} onChange={setTitle} placeholder="看診事由" />
           </FieldRow>
-          <FieldRow label="我的分類">
-            <CategorySelect type={t} value={category} onChange={setCategory} />
-          </FieldRow>
+
           <FieldRow label="醫院">
             <TextInput value={hospital} onChange={setHospital} placeholder="醫院名稱" />
           </FieldRow>
@@ -454,9 +445,7 @@ export function EditPage({
           <FieldRow label="清單名稱">
             <TextInput value={title} onChange={setTitle} placeholder="清單名稱（選填）" />
           </FieldRow>
-          <FieldRow label="我的分類">
-            <CategorySelect type={t} value={category} onChange={setCategory} />
-          </FieldRow>
+
           <FieldRow label="日期">
             <DateField value={date} onChange={setDate} />
           </FieldRow>
@@ -531,9 +520,7 @@ export function EditPage({
               placeholder="如 薪資、接送收入（選填）"
             />
           </FieldRow>
-          <FieldRow label="我的分類">
-            <CategorySelect type={t} value={category} onChange={setCategory} />
-          </FieldRow>
+
           <FieldRow label="備註">
             <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
           </FieldRow>
@@ -562,9 +549,7 @@ export function EditPage({
               placeholder="商家或地點（選填）"
             />
           </FieldRow>
-          <FieldRow label="我的分類">
-            <CategorySelect type={t} value={category} onChange={setCategory} />
-          </FieldRow>
+
           <FieldRow label="備註">
             <TextArea value={notes} onChange={setNotes} placeholder="備註（選填）" />
           </FieldRow>
@@ -580,11 +565,6 @@ export function EditPage({
           <FieldRow label="標題">
             <TextInput value={title} onChange={setTitle} placeholder="事項標題" />
           </FieldRow>
-          {!isPending && (
-            <FieldRow label="我的分類">
-              <CategorySelect type={t} value={category} onChange={setCategory} />
-            </FieldRow>
-          )}
           {!isPending && (
             <FieldRow label="日期">
               <DateField value={date} onChange={setDate} />
