@@ -838,6 +838,13 @@ export default function App() {
   const [missingDateCount, setMissingDateCount] = useState(0);
 
   function handleDeleteReminder(id: string) {
+    const entries = loadFinanceEntries();
+    const hasLinked = entries.some((e) => e.sourceReminderId === id);
+    if (hasLinked) {
+      saveFinanceEntries(entries.map((e) =>
+        e.sourceReminderId === id ? { ...e, sourceReminderId: undefined } : e
+      ));
+    }
     setSavedReminders(deleteReminder(id));
   }
 
@@ -863,6 +870,13 @@ export default function App() {
 
   function handleDeleteFromEdit() {
     if (!editingReminderId) return;
+    const entries = loadFinanceEntries();
+    const hasLinked = entries.some((e) => e.sourceReminderId === editingReminderId);
+    if (hasLinked) {
+      saveFinanceEntries(entries.map((e) =>
+        e.sourceReminderId === editingReminderId ? { ...e, sourceReminderId: undefined } : e
+      ));
+    }
     setSavedReminders(deleteReminder(editingReminderId));
     setEditingReminderId(null);
   }
@@ -1368,30 +1382,6 @@ export default function App() {
           onDelete={handleDeleteReminder}
           onToggleComplete={handleToggleReminderComplete}
           onEdit={handleOpenEdit}
-          onQuickFinance={(reminderId, type, amountStr) => {
-            const source = savedReminders.find((r) => r.id === reminderId);
-            if (!source) return;
-            const amount = parseFloat(amountStr.replace(/,/g, ""));
-            if (isNaN(amount) || amount <= 0) return;
-            const now = new Date().toISOString();
-            const entry: FinanceEntry = {
-              id: crypto.randomUUID(),
-              type,
-              title: source.title || (type === "Income" ? "收入" : "支出"),
-              amount,
-              date: source.date || now.substring(0, 10),
-              financialCategory: "",
-              myCategory: source.category || undefined,
-              source: type === "Income" ? (source.source ?? undefined) : undefined,
-              merchant: type === "Expense" ? (source.merchant ?? undefined) : undefined,
-              note: undefined,
-              createdAt: now,
-              updatedAt: now,
-              sourceReminderId: reminderId,
-            };
-            const prev = loadFinanceEntries();
-            saveFinanceEntries([...prev, entry]);
-          }}
         />
       )}
       {activePage === "finance" && (

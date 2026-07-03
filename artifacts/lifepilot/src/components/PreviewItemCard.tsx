@@ -8,6 +8,7 @@ import {
 } from "../previewTypes";
 import { normalizeDate, normalizeTime } from "../utils";
 import { ReminderEditor } from "./ReminderEditor";
+import { TimePicker } from "./TimePicker";
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
@@ -537,23 +538,11 @@ export function PreviewItemCard({
               <AllDayToggle allDay={draft.allDay} onToggle={handleAllDayToggle} />
               {!draft.allDay && (
                 <>
-                  <input
-                    type="text"
-                    value={draft.startTime}
-                    onChange={(e) => upd({ startTime: e.target.value })}
-                    placeholder="09:00"
-                    className="w-24 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
-                  />
+                  <TimePicker value={draft.startTime} onChange={(v) => upd({ startTime: v })} />
                   {showEndTime && (
                     <>
                       <span className="text-gray-500 text-xs shrink-0">—</span>
-                      <input
-                        type="text"
-                        value={draft.endTime}
-                        onChange={(e) => upd({ endTime: e.target.value })}
-                        placeholder="12:00"
-                        className="w-24 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
-                      />
+                      <TimePicker value={draft.endTime} onChange={(v) => upd({ endTime: v })} />
                     </>
                   )}
                 </>

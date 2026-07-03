@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
 import { type Reminder, type ReminderType } from "../store";
+import { QuickFinanceModal } from "../components/QuickFinanceModal";
+import { type FinanceEntry, loadFinanceEntries } from "../financeStore";
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -164,12 +166,14 @@ function ReminderCard({
   onDelete,
   onEdit,
   onQuickFinance,
+  linkedCount,
 }: {
   reminder: Reminder;
   onToggleComplete: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
   onQuickFinance: (id: string) => void;
+  linkedCount: number;
 }) {
   const badge    = TYPE_BADGE[reminder.type] ?? TYPE_BADGE.Pending;
   const overdue  = isOverdue(reminder.date, reminder.completed);
@@ -242,6 +246,11 @@ function ReminderCard({
 
         {/* Type-specific details */}
         <TypeDetails reminder={reminder} />
+
+        {/* Linked finance badge */}
+        {linkedCount > 0 && (
+          <p className="mt-1.5 text-xs text-gray-600">已記帳 {linkedCount} 筆</p>
+        )}
       </div>
 
       {/* Action buttons */}
@@ -274,86 +283,6 @@ function ReminderCard({
   );
 }
 
-// ─── Quick Finance Modal ──────────────────────────────────────────────────────
-
-function QuickFinanceModal({
-  reminder,
-  onConfirm,
-  onCancel,
-}: {
-  reminder: Reminder;
-  onConfirm: (type: "Income" | "Expense", amount: string) => void;
-  onCancel: () => void;
-}) {
-  const [type, setType]     = useState<"Income" | "Expense">("Expense");
-  const [amount, setAmount] = useState(reminder.amount ?? reminder.price ?? "");
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-2xl bg-gray-900 border-t border-white/10 rounded-t-2xl p-6 pb-10 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-white">快速記帳</h2>
-          <button onClick={onCancel} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
-        </div>
-
-        <p className="text-xs text-gray-500 truncate">來自：{reminder.title}</p>
-
-        {/* Income / Expense toggle */}
-        <div className="flex rounded-xl bg-white/5 border border-white/8 p-1 gap-1">
-          {(["Expense", "Income"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setType(t)}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-                type === t
-                  ? t === "Income"
-                    ? "bg-teal-500/20 text-teal-300 border border-teal-500/25"
-                    : "bg-orange-500/20 text-orange-300 border border-orange-500/25"
-                  : "text-gray-500 hover:text-gray-400"
-              }`}
-            >
-              {t === "Income" ? "💰 收入" : "💸 支出"}
-            </button>
-          ))}
-        </div>
-
-        {/* Amount */}
-        <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-          <span className="text-gray-500 text-sm shrink-0">NT$</span>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="金額"
-            autoFocus
-            className="flex-1 bg-transparent text-white text-lg font-semibold focus:outline-none placeholder-gray-700"
-          />
-        </div>
-
-        <div className="flex gap-3 pt-1">
-          <button
-            type="button"
-            onClick={() => onConfirm(type, amount)}
-            disabled={!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0}
-            className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-sm transition-colors"
-          >
-            記帳
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex-1 py-3 rounded-xl bg-white/5 border border-white/10 text-gray-300 font-semibold text-sm"
-          >
-            取消
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export function RemindersPage({
@@ -361,18 +290,17 @@ export function RemindersPage({
   onToggleComplete,
   onDelete,
   onEdit,
-  onQuickFinance,
 }: {
   reminders: Reminder[];
   onToggleComplete: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
-  onQuickFinance?: (reminderId: string, type: "Income" | "Expense", amount: string) => void;
 }) {
-  const [search,        setSearch]        = useState("");
-  const [filterTab,     setFilterTab]     = useState<FilterTab>("all");
-  const [showCompleted, setShowCompleted] = useState(false);
-  const [quickId,       setQuickId]       = useState<string | null>(null);
+  const [search,         setSearch]         = useState("");
+  const [filterTab,      setFilterTab]      = useState<FilterTab>("all");
+  const [showCompleted,  setShowCompleted]  = useState(false);
+  const [quickId,        setQuickId]        = useState<string | null>(null);
+  const [financeEntries, setFinanceEntries] = useState<FinanceEntry[]>(() => loadFinanceEntries());
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
@@ -407,13 +335,21 @@ export function RemindersPage({
     return g;
   }, [filtered]);
 
-  // Quick finance reminder lookup
   const quickReminder = quickId ? reminders.find((r) => r.id === quickId) : null;
 
-  function handleQuickConfirm(type: "Income" | "Expense", amount: string) {
-    if (!quickId) return;
-    onQuickFinance?.(quickId, type, amount);
+  function handleFinanceSave(entry: FinanceEntry) {
+    setFinanceEntries((prev) => [...prev, entry]);
     setQuickId(null);
+  }
+
+  function handleDeleteWithCheck(id: string) {
+    const linked = financeEntries.filter((e) => e.sourceReminderId === id);
+    if (linked.length > 0) {
+      if (!window.confirm(
+        `此事項有 ${linked.length} 筆相關收支紀錄。\n刪除後收支紀錄將保留，但解除事項關聯。\n\n確定刪除？`
+      )) return;
+    }
+    onDelete(id);
   }
 
   // ── Empty state ────────────────────────────────────────────────────────────
@@ -545,9 +481,10 @@ export function RemindersPage({
                       key={r.id}
                       reminder={r}
                       onToggleComplete={onToggleComplete}
-                      onDelete={onDelete}
+                      onDelete={handleDeleteWithCheck}
                       onEdit={onEdit}
                       onQuickFinance={(id) => setQuickId(id)}
+                      linkedCount={financeEntries.filter((e) => e.sourceReminderId === r.id).length}
                     />
                   ))}
                 </div>
@@ -561,7 +498,7 @@ export function RemindersPage({
       {quickReminder && (
         <QuickFinanceModal
           reminder={quickReminder}
-          onConfirm={handleQuickConfirm}
+          onSave={handleFinanceSave}
           onCancel={() => setQuickId(null)}
         />
       )}

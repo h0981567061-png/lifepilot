@@ -3,6 +3,9 @@ import type { Reminder, ReminderNotification } from "../store";
 import { normalizeDate } from "../utils";
 import { TYPE_LABEL, type AllType } from "../previewTypes";
 import { ReminderEditor } from "../components/ReminderEditor";
+import { TimePicker } from "../components/TimePicker";
+import { QuickFinanceModal } from "../components/QuickFinanceModal";
+import { loadFinanceEntries, type FinanceEntry, fmtCurrency } from "../financeStore";
 
 // ── UI primitives ─────────────────────────────────────────────────────────────
 
@@ -157,6 +160,11 @@ export function EditPage({
   const [endTime,   setEndTime]   = useState(reminder.endTime);
   const [allDay,    setAllDay]    = useState(reminder.allDay ?? !reminder.startTime);
   const [location,  setLocation]  = useState(reminder.location);
+  const [linkedFinance,    setLinkedFinance]    = useState<FinanceEntry[]>(() =>
+    loadFinanceEntries().filter((e) => e.sourceReminderId === reminder.id)
+  );
+  const [showDeleteWarning, setShowDeleteWarning] = useState(false);
+  const [showQuickFinance,  setShowQuickFinance]  = useState(false);
   const [notes,     setNotes]     = useState(reminder.notes);
   const [category,  setCategory]  = useState(reminder.category ?? "");
 
@@ -261,8 +269,12 @@ export function EditPage({
   }
 
   function handleDeleteConfirm() {
-    if (window.confirm("確定要刪除這個提醒事項嗎？刪除後無法復原。")) {
-      onDelete();
+    if (linkedFinance.length > 0) {
+      setShowDeleteWarning(true);
+    } else {
+      if (window.confirm("確定要刪除這個提醒事項嗎？刪除後無法復原。")) {
+        onDelete();
+      }
     }
   }
 
@@ -351,9 +363,9 @@ export function EditPage({
               </button>
               {!allDay && (
                 <>
-                  <TextInput value={startTime} onChange={setStartTime} placeholder="09:00" />
+                  <TimePicker value={startTime} onChange={setStartTime} />
                   <span className="text-gray-500 text-xs shrink-0">—</span>
-                  <TextInput value={endTime} onChange={setEndTime} placeholder="12:00" />
+                  <TimePicker value={endTime} onChange={setEndTime} />
                 </>
               )}
             </div>
@@ -412,7 +424,7 @@ export function EditPage({
               >
                 全天
               </button>
-              {!allDay && <TextInput value={startTime} onChange={setStartTime} placeholder="如 14:30" />}
+              {!allDay && <TimePicker value={startTime} onChange={setStartTime} />}
             </div>
           </FieldRow>
           <FieldRow label="地區">
@@ -465,7 +477,7 @@ export function EditPage({
               >
                 全天
               </button>
-              {!allDay && <TextInput value={startTime} onChange={setStartTime} placeholder="如 14:00" />}
+              {!allDay && <TimePicker value={startTime} onChange={setStartTime} />}
             </div>
           </FieldRow>
           <FieldRow label="備註">
@@ -620,7 +632,7 @@ export function EditPage({
                 >
                   全天
                 </button>
-                {!allDay && <TextInput value={startTime} onChange={setStartTime} placeholder="如 09:00" />}
+                {!allDay && <TimePicker value={startTime} onChange={setStartTime} />}
               </div>
             </FieldRow>
           )}
@@ -666,8 +678,44 @@ export function EditPage({
         </>
       )}
 
+      {/* ══════════════════════════════════════════════════════════════════════
+          RELATED FINANCE
+          ══════════════════════════════════════════════════════════════════════ */}
+      {!isPending && (
+        <>
+          <SectionLabel>相關收支</SectionLabel>
+          {linkedFinance.length > 0 ? (
+            <div className="mb-3 space-y-px">
+              {linkedFinance.map((e) => (
+                <div key={e.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                  <div>
+                    <p className="text-sm text-gray-200">{e.title}</p>
+                    {e.financialCategory && (
+                      <p className="text-xs text-gray-500">{e.date} · {e.financialCategory}</p>
+                    )}
+                  </div>
+                  <span className={`text-sm font-medium tabular-nums ${e.type === "Income" ? "text-teal-400" : "text-rose-400"}`}>
+                    {e.type === "Income" ? "+" : "−"} {fmtCurrency(e.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-600 py-2">尚無相關收支紀錄</p>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowQuickFinance(true)}
+            className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 mt-1 mb-6"
+          >
+            <span className="text-sm leading-none">＋</span>
+            <span>{linkedFinance.length > 0 ? "新增記帳" : "記帳"}</span>
+          </button>
+        </>
+      )}
+
       {/* ── Action buttons ───────────────────────────────────────────────────── */}
-      <div className="mt-10 flex gap-3">
+      <div className="mt-4 flex gap-3">
         <button
           onClick={handleSave}
           className="flex-1 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-600/20"
@@ -687,6 +735,48 @@ export function EditPage({
       >
         刪除此事項
       </button>
+
+      {/* Quick Finance Modal */}
+      {showQuickFinance && (
+        <QuickFinanceModal
+          reminder={reminder}
+          onSave={(entry) => {
+            setLinkedFinance((prev) => [...prev, entry]);
+            setShowQuickFinance(false);
+          }}
+          onCancel={() => setShowQuickFinance(false)}
+        />
+      )}
+
+      {/* Delete Warning Modal */}
+      {showDeleteWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
+          <div className="w-full max-w-sm bg-gray-900 border border-white/10 rounded-2xl p-6 space-y-4">
+            <h3 className="text-base font-semibold text-white">確認刪除</h3>
+            <p className="text-sm text-gray-400 leading-relaxed">
+              此事項有{" "}
+              <span className="text-white font-medium">{linkedFinance.length} 筆</span>
+              {" "}相關收支紀錄。刪除事項後，收支紀錄將保留，但會解除事項關聯。
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteWarning(false)}
+                className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 text-sm font-medium"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowDeleteWarning(false); onDelete(); }}
+                className="flex-1 py-2.5 rounded-xl bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium transition-colors"
+              >
+                刪除事項
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
