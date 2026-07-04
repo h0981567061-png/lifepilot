@@ -1,5 +1,10 @@
 import { useState } from "react";
-import type { Reminder } from "../store";
+import {
+  type Reminder,
+  type FinancialItem,
+  updateReminder,
+  loadReminders,
+} from "../store";
 import {
   type FinanceEntry,
   type FinanceType,
@@ -7,17 +12,40 @@ import {
   saveFinanceEntries,
   FINANCE_INCOME_CATEGORIES,
   FINANCE_EXPENSE_CATEGORIES,
+  fmtCurrency,
 } from "../financeStore";
 import { normalizeDate } from "../utils";
 
+// ─── Modal entry type ─────────────────────────────────────────────────────────
+
+type ModalEntryType = "receivable" | "payable" | "Income" | "Expense";
+
+const MODAL_TYPES: { key: ModalEntryType; label: string; color: string }[] = [
+  { key: "receivable", label: "待收",  color: "teal"   },
+  { key: "payable",   label: "待付",  color: "rose"   },
+  { key: "Income",    label: "收入",  color: "emerald" },
+  { key: "Expense",   label: "支出",  color: "orange"  },
+];
+
+const COLOR_ACTIVE: Record<string, string> = {
+  teal:    "bg-teal-500/20 text-teal-300 border-teal-500/25",
+  rose:    "bg-rose-500/20 text-rose-300 border-rose-500/25",
+  emerald: "bg-emerald-500/20 text-emerald-300 border-emerald-500/25",
+  orange:  "bg-orange-500/20 text-orange-300 border-orange-500/25",
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function defaultFinanceType(r: Reminder): FinanceType {
-  return r.type === "Airport Transfer" ? "Income" : "Expense";
+function defaultType(r: Reminder): ModalEntryType {
+  if (r.type === "Payment")         return "payable";
+  if (r.type === "Airport Transfer") return "receivable";
+  if (r.type === "Income")           return "Income";
+  return "Expense";
 }
 
-function defaultCategory(r: Reminder, finType: FinanceType): string {
-  if (finType === "Income") {
+function defaultCategory(r: Reminder, t: ModalEntryType): string {
+  if (t === "receivable" || t === "payable") return "";
+  if (t === "Income") {
     if (r.type === "Airport Transfer") return "接送收入";
     return "";
   }
@@ -30,9 +58,9 @@ function defaultCategory(r: Reminder, finType: FinanceType): string {
   }
 }
 
-function defaultAmount(r: Reminder, finType: FinanceType): string {
-  if (r.type === "Airport Transfer" && finType === "Income") return r.price ?? "";
-  if (r.type === "Payment")  return r.amount ?? "";
+function defaultAmount(r: Reminder, t: ModalEntryType): string {
+  if (t === "receivable" && r.type === "Airport Transfer") return r.price ?? "";
+  if ((t === "payable" || t === "Expense") && r.type === "Payment") return r.amount ?? "";
   return "";
 }
 
@@ -42,13 +70,15 @@ interface Props {
   reminder: Reminder;
   onSave: (entry: FinanceEntry) => void;
   onCancel: () => void;
+  /** Called after receivable/payable is added to the reminder's financialItems */
+  onReminderUpdated?: (updated: Reminder) => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function QuickFinanceModal({ reminder, onSave, onCancel }: Props) {
-  const initType = defaultFinanceType(reminder);
-  const [finType,  setFinType]  = useState<FinanceType>(initType);
+export function QuickFinanceModal({ reminder, onSave, onCancel, onReminderUpdated }: Props) {
+  const initType = defaultType(reminder);
+  const [entryType, setEntryType] = useState<ModalEntryType>(initType);
   const [title,    setTitle]    = useState(reminder.title || "");
   const [amount,   setAmount]   = useState(defaultAmount(reminder, initType));
   const [date,     setDate]     = useState(normalizeDate(reminder.date));
@@ -57,29 +87,52 @@ export function QuickFinanceModal({ reminder, onSave, onCancel }: Props) {
   const [merchant, setMerchant] = useState("");
   const [note,     setNote]     = useState("");
 
-  const categoryOptions = finType === "Income"
+  const isFinanceEntry = entryType === "Income" || entryType === "Expense";
+  const categoryOptions = entryType === "Income"
     ? FINANCE_INCOME_CATEGORIES
     : FINANCE_EXPENSE_CATEGORIES;
 
-  function handleTypeSwitch(t: FinanceType) {
-    const newCat = defaultCategory(reminder, t);
-    setFinType(t);
-    setCategory(newCat);
+  function handleTypeSwitch(t: ModalEntryType) {
+    setEntryType(t);
+    setCategory(defaultCategory(reminder, t));
+    if (entryType === "receivable" || entryType === "payable") setAmount("");
   }
 
   function handleSave() {
     const amt = parseFloat(amount.replace(/,/g, ""));
     if (isNaN(amt) || amt <= 0) return;
     const now = new Date().toISOString();
+
+    if (entryType === "receivable" || entryType === "payable") {
+      // ── Save as FinancialItem on the Reminder ──────────────────────────────
+      const existing = loadReminders().find((r) => r.id === reminder.id);
+      if (!existing) return;
+      const newItem: FinancialItem = {
+        id: crypto.randomUUID(),
+        title: title.trim() || (entryType === "receivable" ? "待收款" : "待付款"),
+        type: entryType,
+        amount: amt,
+        dueDate: date || undefined,
+        note: note.trim() || undefined,
+      };
+      const updatedItems = [...(existing.financialItems ?? []), newItem];
+      updateReminder(reminder.id, { financialItems: updatedItems });
+      const updatedReminder: Reminder = { ...existing, financialItems: updatedItems };
+      onReminderUpdated?.(updatedReminder);
+      onCancel();
+      return;
+    }
+
+    // ── Save as FinanceEntry (Income / Expense) ────────────────────────────────
     const entry: FinanceEntry = {
       id: crypto.randomUUID(),
-      type: finType,
-      title: title.trim() || (finType === "Income" ? "收入" : "支出"),
+      type: entryType as FinanceType,
+      title: title.trim() || (entryType === "Income" ? "收入" : "支出"),
       amount: amt,
       date: date || now.substring(0, 10),
       financialCategory: category,
-      source:   finType === "Income" ? source || undefined : undefined,
-      merchant: finType === "Expense" ? merchant || undefined : undefined,
+      source:   entryType === "Income" ? source || undefined : undefined,
+      merchant: entryType === "Expense" ? merchant || undefined : undefined,
       note: note.trim() || undefined,
       createdAt: now,
       updatedAt: now,
@@ -90,7 +143,7 @@ export function QuickFinanceModal({ reminder, onSave, onCancel }: Props) {
     onSave(entry);
   }
 
-  const canSave = !!amount && !isNaN(parseFloat(amount)) && parseFloat(amount) > 0;
+  const canSave = !!amount && !isNaN(parseFloat(amount.replace(/,/g, ""))) && parseFloat(amount.replace(/,/g, "")) > 0;
 
   return (
     <div
@@ -100,32 +153,38 @@ export function QuickFinanceModal({ reminder, onSave, onCancel }: Props) {
       <div className="w-full max-w-2xl bg-gray-900 border-t border-white/10 rounded-t-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-3">
-          <h2 className="text-base font-semibold text-white">快速記帳</h2>
+          <h2 className="text-base font-semibold text-white">記帳</h2>
           <button onClick={onCancel} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
         </div>
         <p className="px-6 pb-4 text-xs text-gray-500 truncate">來自：{reminder.title}</p>
 
         {/* Scrollable form */}
-        <div className="overflow-y-auto max-h-[70vh] px-6 pb-10 space-y-4">
-          {/* Income / Expense */}
-          <div className="flex rounded-xl bg-white/5 border border-white/8 p-1 gap-1">
-            {(["Expense", "Income"] as const).map((t) => (
+        <div className="overflow-y-auto max-h-[75vh] px-6 pb-10 space-y-4">
+
+          {/* Type selector: 待收 / 待付 / 收入 / 支出 */}
+          <div className="grid grid-cols-4 gap-1.5 rounded-xl bg-white/5 border border-white/8 p-1">
+            {MODAL_TYPES.map(({ key, label, color }) => (
               <button
-                key={t}
+                key={key}
                 type="button"
-                onClick={() => handleTypeSwitch(t)}
-                className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-                  finType === t
-                    ? t === "Income"
-                      ? "bg-teal-500/20 text-teal-300 border border-teal-500/25"
-                      : "bg-orange-500/20 text-orange-300 border border-orange-500/25"
+                onClick={() => handleTypeSwitch(key)}
+                className={`py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                  entryType === key
+                    ? `${COLOR_ACTIVE[color]} border`
                     : "text-gray-500 hover:text-gray-400"
                 }`}
               >
-                {t === "Income" ? "💰 收入" : "💸 支出"}
+                {label}
               </button>
             ))}
           </div>
+
+          {/* Hint for receivable/payable */}
+          {(entryType === "receivable" || entryType === "payable") && (
+            <p className="text-xs text-gray-600">
+              {entryType === "receivable" ? "記錄預計收到的款項（尚未到帳）" : "記錄預計支付的款項（尚未付出）"}
+            </p>
+          )}
 
           {/* Title */}
           <div>
@@ -134,7 +193,11 @@ export function QuickFinanceModal({ reminder, onSave, onCancel }: Props) {
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="記帳標題"
+              placeholder={
+                entryType === "receivable" ? "待收款說明" :
+                entryType === "payable"   ? "待付款說明" :
+                entryType === "Income"    ? "收入說明" : "支出說明"
+              }
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/40"
             />
           </div>
@@ -158,7 +221,9 @@ export function QuickFinanceModal({ reminder, onSave, onCancel }: Props) {
 
           {/* Date */}
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">日期</label>
+            <label className="text-xs text-gray-500 mb-1 block">
+              {entryType === "payable" ? "預計付款日" : entryType === "receivable" ? "預計收款日" : "日期"}
+            </label>
             <input
               type="date"
               value={date}
@@ -168,24 +233,26 @@ export function QuickFinanceModal({ reminder, onSave, onCancel }: Props) {
             />
           </div>
 
-          {/* Category */}
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">記帳分類</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500/40"
-              style={{ colorScheme: "dark" }}
-            >
-              <option value="">選擇分類</option>
-              {categoryOptions.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
+          {/* Category — Income/Expense only */}
+          {isFinanceEntry && (
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">記帳分類</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500/40"
+                style={{ colorScheme: "dark" }}
+              >
+                <option value="">選擇分類</option>
+                {categoryOptions.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
-          {/* Source (Income) / Merchant (Expense) */}
-          {finType === "Income" ? (
+          {/* Source (Income) */}
+          {entryType === "Income" && (
             <div>
               <label className="text-xs text-gray-500 mb-1 block">收入來源（選填）</label>
               <input
@@ -196,7 +263,10 @@ export function QuickFinanceModal({ reminder, onSave, onCancel }: Props) {
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/40"
               />
             </div>
-          ) : (
+          )}
+
+          {/* Merchant (Expense) */}
+          {entryType === "Expense" && (
             <div>
               <label className="text-xs text-gray-500 mb-1 block">商家或地點（選填）</label>
               <input
@@ -239,6 +309,16 @@ export function QuickFinanceModal({ reminder, onSave, onCancel }: Props) {
               取消
             </button>
           </div>
+
+          {/* Amount preview */}
+          {canSave && (
+            <p className="text-center text-xs text-gray-600 pb-2">
+              {entryType === "receivable" && `＋ 待收 ${fmtCurrency(parseFloat(amount.replace(/,/g, "")))}`}
+              {entryType === "payable"    && `− 待付 ${fmtCurrency(parseFloat(amount.replace(/,/g, "")))}`}
+              {entryType === "Income"     && `＋ 收入 ${fmtCurrency(parseFloat(amount.replace(/,/g, "")))}`}
+              {entryType === "Expense"    && `− 支出 ${fmtCurrency(parseFloat(amount.replace(/,/g, "")))}`}
+            </p>
+          )}
         </div>
       </div>
     </div>

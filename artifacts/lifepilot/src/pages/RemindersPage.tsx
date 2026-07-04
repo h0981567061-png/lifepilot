@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { type Reminder, type ReminderType } from "../store";
+import { type Reminder, type ReminderType, type FinancialItem, updateReminder } from "../store";
 import { QuickFinanceModal } from "../components/QuickFinanceModal";
 import { type FinanceEntry, loadFinanceEntries, fmtCurrency } from "../financeStore";
 
@@ -77,43 +77,58 @@ const TYPE_BADGE: Record<ReminderType, { label: string; className: string }> = {
   General:          { label: "一般",   className: "bg-gray-500/15 text-gray-300 border-gray-500/25" },
 };
 
-// Quick-record types (for the "＋記帳" shortcut)
+// Types where the card itself IS a finance record (no "記帳" button needed)
 const FINANCE_TYPES: ReminderType[] = ["Income", "Expense"];
 
-// ─── Financial Items summary helpers ─────────────────────────────────────────
+// ─── Financial display helpers ────────────────────────────────────────────────
 
-function getFinancialItemTotals(reminder: Reminder): { receivable: number; payable: number } {
-  // v2: use financialItems if present
+/**
+ * Return all FinancialItem objects for a reminder, normalising legacy formats.
+ * These are the expected-payment items (receivable / payable) — not real entries.
+ */
+function getDisplayFinancialItems(reminder: Reminder): FinancialItem[] {
   if (reminder.financialItems && reminder.financialItems.length > 0) {
-    const receivable = reminder.financialItems
-      .filter(i => i.type === "receivable")
-      .reduce((s, i) => s + i.amount, 0);
-    const payable = reminder.financialItems
-      .filter(i => i.type === "payable")
-      .reduce((s, i) => s + i.amount, 0);
-    return { receivable, payable };
+    return reminder.financialItems;
   }
-  // Legacy: single financialStatus/expectedAmount
-  if ((reminder.financialStatus === "receivable" || reminder.financialStatus === "payable")
-      && reminder.expectedAmount && reminder.expectedAmount > 0) {
-    return reminder.financialStatus === "receivable"
-      ? { receivable: reminder.expectedAmount, payable: 0 }
-      : { receivable: 0, payable: reminder.expectedAmount };
+  // Legacy: single financialStatus / expectedAmount
+  if (
+    (reminder.financialStatus === "receivable" || reminder.financialStatus === "payable") &&
+    reminder.expectedAmount && reminder.expectedAmount > 0
+  ) {
+    return [{
+      id: `legacy-${reminder.id}`,
+      title: reminder.title || (reminder.financialStatus === "receivable" ? "待收款項" : "待付款項"),
+      type: reminder.financialStatus,
+      amount: reminder.expectedAmount,
+      dueDate: reminder.financialDueDate || undefined,
+    }];
   }
   // Payment backward compat (no financialStatus, has amount)
   if (!reminder.financialStatus && reminder.type === "Payment" && reminder.amount) {
     const n = parseFloat(String(reminder.amount).replace(/,/g, ""));
-    if (!isNaN(n) && n > 0) return { receivable: 0, payable: n };
+    if (!isNaN(n) && n > 0) return [{
+      id: `legacy-pay-${reminder.id}`,
+      title: reminder.title || "繳費",
+      type: "payable",
+      amount: n,
+      dueDate: reminder.financialDueDate || reminder.dueDate || undefined,
+    }];
   }
   // AirportTransfer backward compat
   if (!reminder.financialStatus && reminder.type === "Airport Transfer" && reminder.amount) {
     const n = parseFloat(String(reminder.amount).replace(/,/g, ""));
-    if (!isNaN(n) && n > 0) return { receivable: n, payable: 0 };
+    if (!isNaN(n) && n > 0) return [{
+      id: `legacy-at-${reminder.id}`,
+      title: reminder.title || "接送費",
+      type: "receivable",
+      amount: n,
+    }];
   }
-  return { receivable: 0, payable: 0 };
+  return [];
 }
 
-// Filter tabs
+// ─── Filter tabs ──────────────────────────────────────────────────────────────
+
 type FilterTab = "all" | ReminderType;
 const FILTER_TABS: { key: FilterTab; label: string }[] = [
   { key: "all",              label: "全部" },
@@ -128,27 +143,84 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
   { key: "Family",           label: "家庭" },
 ];
 
+// ─── Airport Transfer details ─────────────────────────────────────────────────
+
+function AirportTransferDetails({ reminder }: { reminder: Reminder }) {
+  const atd = reminder.templateData?.airportTransfer;
+
+  // Data sources — prefer templateData, fall back to flat fields
+  const transferType  = atd?.transferType
+    ? (atd.transferType === "pickup" ? "接機" : atd.transferType === "dropoff" ? "送機" : reminder.transferType ?? "")
+    : reminder.transferType ?? "";
+  const flightNumber  = atd?.flightNumber  || reminder.flightNumber || "";
+  const pickupLoc     = atd?.pickupLocation || reminder.location    || "";
+  const destination   = atd?.destination   || "";
+  const passengerName = atd?.passengerName  || "";
+  const passengerCount= atd?.passengerCount;
+  const luggage       = atd?.luggage        || "";
+  const vehicleType   = reminder.vehicleType || "";
+
+  const passengerParts = [
+    passengerName,
+    passengerCount != null ? `${passengerCount} 人` : "",
+    luggage       ? `${luggage}行李`                 : "",
+  ].filter(Boolean);
+
+  const hasRoute = !!(pickupLoc || destination);
+
+  return (
+    <div className="mt-1 space-y-1.5">
+      {/* Direction tag */}
+      {transferType && (
+        <span className={`text-xs font-medium ${
+          transferType === "接機" ? "text-emerald-400/80" : "text-sky-400/80"
+        }`}>
+          {transferType}
+        </span>
+      )}
+
+      {/* Flight number */}
+      {flightNumber && (
+        <p className="text-xs font-mono text-amber-300/70">✈ {flightNumber}</p>
+      )}
+
+      {/* Route: pickup → destination */}
+      {hasRoute && (
+        <div className="text-xs text-gray-500 space-y-0.5">
+          {pickupLoc && <p className="text-gray-400">{pickupLoc}</p>}
+          {destination && (
+            <>
+              <p className="text-gray-700">↓</p>
+              <p className="text-gray-400 break-words leading-relaxed">{destination}</p>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Passenger summary */}
+      {passengerParts.length > 0 && (
+        <p className="text-xs text-gray-500">{passengerParts.join("｜")}</p>
+      )}
+
+      {/* Vehicle type */}
+      {vehicleType && (
+        <p className="text-xs text-gray-600">{vehicleType}</p>
+      )}
+    </div>
+  );
+}
+
 // ─── Type-specific detail rows ────────────────────────────────────────────────
 
 function TypeDetails({ reminder }: { reminder: Reminder }) {
   switch (reminder.type) {
     case "Airport Transfer":
-      return (
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
-          {reminder.transferType && (
-            <span className={reminder.transferType === "接機" ? "text-emerald-400/70" : "text-sky-400/70"}>
-              {reminder.transferType}
-            </span>
-          )}
-          {reminder.flightNumber && <span>✈ {reminder.flightNumber}</span>}
-          {reminder.district && <span>{reminder.district}</span>}
-          {reminder.vehicleType && <span>{reminder.vehicleType}</span>}
-        </div>
-      );
+      return <AirportTransferDetails reminder={reminder} />;
+
     case "Shopping":
       if (!reminder.shoppingItems?.length) return null;
       return (
-        <div className="text-xs text-gray-500">
+        <div className="text-xs text-gray-500 mt-1">
           <span className="text-gray-600">{reminder.shoppingItems.length} 項：</span>
           {reminder.shoppingItems.slice(0, 4).join("、")}
           {reminder.shoppingItems.length > 4 && (
@@ -156,37 +228,97 @@ function TypeDetails({ reminder }: { reminder: Reminder }) {
           )}
         </div>
       );
+
     case "Payment":
+      if (!reminder.dueDate) return null;
       return (
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
-          {reminder.dueDate && <span>截止 {reminder.dueDate}</span>}
+        <div className="text-xs text-gray-500 mt-1">
+          截止 {reminder.dueDate}
         </div>
       );
+
     case "Medical":
+      if (!reminder.hospital && !reminder.department) return null;
       return (
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500 mt-1">
           {reminder.hospital && <span>{reminder.hospital}</span>}
           {reminder.department && <span className="text-rose-400/70">{reminder.department}</span>}
         </div>
       );
+
     case "Income":
       return (
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500 mt-1">
           {reminder.amount && <span className="text-teal-400/70">+ {reminder.amount} 元</span>}
           {reminder.source && <span>{reminder.source}</span>}
         </div>
       );
+
     case "Expense":
       return (
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500 mt-1">
           {reminder.amount && <span className="text-red-400/70">- {reminder.amount} 元</span>}
           {reminder.merchant && <span>{reminder.merchant}</span>}
         </div>
       );
+
     default:
       if (!reminder.notes) return null;
-      return <p className="text-xs text-gray-600 leading-relaxed line-clamp-2">{reminder.notes}</p>;
+      return <p className="text-xs text-gray-600 leading-relaxed line-clamp-2 mt-1">{reminder.notes}</p>;
   }
+}
+
+// ─── Financial summary ────────────────────────────────────────────────────────
+
+function FinancialSummary({
+  reminder,
+  linkedEntries,
+}: {
+  reminder: Reminder;
+  linkedEntries: FinanceEntry[];
+}) {
+  const financialItems = getDisplayFinancialItems(reminder);
+  const hasAnything = financialItems.length > 0 || linkedEntries.length > 0;
+  if (!hasAnything) return null;
+
+  return (
+    <div className="mt-2 space-y-0.5">
+      {/* FinancialItems (receivable / payable) — per-item with completion state */}
+      {financialItems.map((fi) => {
+        if (fi.completed) {
+          return (
+            <div key={fi.id} className="flex items-center gap-1.5 flex-wrap">
+              <p className="text-xs text-gray-500">
+                <span className="text-teal-400/60 mr-1">✓</span>
+                {fi.type === "receivable" ? "已收" : "已付"}
+                {" "}{fmtCurrency(fi.amount)}
+              </p>
+              {fi.completedDate && (
+                <p className="text-xs text-gray-600">{fi.completedDate}</p>
+              )}
+            </div>
+          );
+        }
+        return (
+          <p key={fi.id} className={`text-xs ${
+            fi.type === "receivable" ? "text-teal-400/80" : "text-rose-300/80"
+          }`}>
+            {fi.type === "receivable" ? "待收" : "待付"}
+            {" "}{fmtCurrency(fi.amount)}
+          </p>
+        );
+      })}
+
+      {/* Actual Finance Entries (Income / Expense) — per-item */}
+      {linkedEntries.map((e) => (
+        <p key={e.id} className={`text-xs ${
+          e.type === "Income" ? "text-teal-400/70" : "text-rose-400/70"
+        }`}>
+          {e.type === "Income" ? `收入 + ${fmtCurrency(e.amount)}` : `支出 − ${fmtCurrency(e.amount)}`}
+        </p>
+      ))}
+    </div>
+  );
 }
 
 // ─── Reminder Card ────────────────────────────────────────────────────────────
@@ -206,10 +338,6 @@ function ReminderCard({
   onQuickFinance: (id: string) => void;
   linkedEntries: FinanceEntry[];
 }) {
-  const linkedCount  = linkedEntries.length;
-  const incomeTotal  = linkedEntries.filter(e => e.type === "Income").reduce((s, e) => s + e.amount, 0);
-  const expenseTotal = linkedEntries.filter(e => e.type === "Expense").reduce((s, e) => s + e.amount, 0);
-  const { receivable: receivableTotal, payable: payableTotal } = getFinancialItemTotals(reminder);
   const badge    = TYPE_BADGE[reminder.type] ?? TYPE_BADGE.Pending;
   const overdue  = isOverdue(reminder.date, reminder.completed);
   const isFinance = FINANCE_TYPES.includes(reminder.type);
@@ -246,7 +374,7 @@ function ReminderCard({
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        {/* Title row */}
+        {/* Badge row */}
         <div className="flex items-start gap-2 flex-wrap mb-1.5">
           <span className={`text-xs px-2 py-0.5 rounded-full border font-medium shrink-0 ${badge.className}`}>
             {badge.label}
@@ -266,51 +394,38 @@ function ReminderCard({
           </p>
         </div>
 
-        {/* Meta row */}
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500 mb-1.5">
+        {/* Meta row: date / time / location */}
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500 mb-1">
           {reminder.date && <span>{displayDate(reminder.date)}</span>}
           {reminder.allDay && !reminder.startTime
             ? <span className="text-blue-400/80">全天</span>
             : <>
                 {reminder.startTime && <span>{reminder.startTime}</span>}
-                {reminder.endTime && reminder.endTime !== reminder.startTime && <span>— {reminder.endTime}</span>}
+                {reminder.endTime && reminder.endTime !== reminder.startTime && (
+                  <span>— {reminder.endTime}</span>
+                )}
               </>
           }
-          {reminder.location && <span>📍 {reminder.location}</span>}
+          {/* Location: skip for Airport Transfer (shown in AirportTransferDetails) */}
+          {reminder.location && reminder.type !== "Airport Transfer" && (
+            <span>📍 {reminder.location}</span>
+          )}
         </div>
 
         {/* Type-specific details */}
         <TypeDetails reminder={reminder} />
 
         {/* Financial summary */}
-        {(receivableTotal > 0 || payableTotal > 0 || incomeTotal > 0 || expenseTotal > 0) && (
-          <div className="mt-2 space-y-0.5">
-            {receivableTotal > 0 && (
-              <p className="text-xs text-teal-400/80">待收 {fmtCurrency(receivableTotal)}</p>
-            )}
-            {payableTotal > 0 && (
-              <p className="text-xs text-rose-300/80">待付 {fmtCurrency(payableTotal)}</p>
-            )}
-            {incomeTotal > 0 && (
-              <p className="text-xs text-teal-400/70">收入 + {fmtCurrency(incomeTotal)}</p>
-            )}
-            {expenseTotal > 0 && (
-              <p className="text-xs text-rose-400/70">支出 − {fmtCurrency(expenseTotal)}</p>
-            )}
-            {linkedCount > 0 && (
-              <p className="text-xs text-gray-600">{linkedCount} 筆</p>
-            )}
-          </div>
-        )}
+        <FinancialSummary reminder={reminder} linkedEntries={linkedEntries} />
 
-        {/* ＋ 新增款項 — visible text button, opens editor */}
+        {/* ＋ 記帳 button — opens QuickFinanceModal */}
         {!isFinance && !reminder.completed && (
           <button
-            onClick={(e) => { e.stopPropagation(); onEdit(reminder.id); }}
-            className="mt-2.5 inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 px-2.5 py-1.5 rounded-lg bg-blue-500/8 border border-blue-500/18 hover:bg-blue-500/14 transition-all active:scale-95"
+            onClick={(e) => { e.stopPropagation(); onQuickFinance(reminder.id); }}
+            className="mt-3 inline-flex items-center gap-1.5 text-sm text-blue-300 hover:text-blue-200 px-3.5 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/18 hover:border-blue-500/30 transition-all active:scale-95 font-medium"
           >
-            <span className="text-sm leading-none font-light">＋</span>
-            <span>新增款項</span>
+            <span className="text-base leading-none">＋</span>
+            <span>記帳</span>
           </button>
         )}
       </div>
@@ -319,7 +434,7 @@ function ReminderCard({
       <div className="flex flex-col shrink-0 self-start" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={() => onDelete(reminder.id)}
-          className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-all duration-150"
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-all duration-150"
           title="刪除"
         >
           <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none">
@@ -349,15 +464,28 @@ export function RemindersPage({
   const [showCompleted,  setShowCompleted]  = useState(false);
   const [quickId,        setQuickId]        = useState<string | null>(null);
   const [financeEntries, setFinanceEntries] = useState<FinanceEntry[]>(() => loadFinanceEntries());
+  /**
+   * Local overrides: when QuickFinanceModal saves a FinancialItem, the reminder
+   * is updated in localStorage but the `reminders` prop (from App.tsx) won't
+   * re-render until the parent does so. We keep a shallow override map so the
+   * card reflects the new item immediately without requiring App.tsx changes.
+   */
+  const [reminderOverrides, setReminderOverrides] = useState<Record<string, Reminder>>({});
+
+  // Merge prop reminders with local overrides
+  const effectiveReminders: Reminder[] = useMemo(
+    () => reminders.map((r) => reminderOverrides[r.id] ?? r),
+    [reminders, reminderOverrides]
+  );
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const activeCount   = reminders.filter((r) => !r.completed).length;
-  const overdueCount  = reminders.filter((r) => isOverdue(r.date, r.completed)).length;
+  const activeCount  = effectiveReminders.filter((r) => !r.completed).length;
+  const overdueCount = effectiveReminders.filter((r) => isOverdue(r.date, r.completed)).length;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return reminders.filter((r) => {
+    return effectiveReminders.filter((r) => {
       if (!showCompleted && r.completed) return false;
       if (filterTab !== "all" && r.type !== filterTab) return false;
       if (!q) return true;
@@ -367,12 +495,13 @@ export function RemindersPage({
         r.notes?.toLowerCase().includes(q) ||
         r.location?.toLowerCase().includes(q) ||
         r.hospital?.toLowerCase().includes(q) ||
-        r.flightNumber?.toLowerCase().includes(q)
+        r.flightNumber?.toLowerCase().includes(q) ||
+        r.templateData?.airportTransfer?.passengerName?.toLowerCase().includes(q)
       );
     });
-  }, [reminders, search, filterTab, showCompleted]);
+  }, [effectiveReminders, search, filterTab, showCompleted]);
 
-  // Group
+  // Group by date
   const groups = useMemo(() => {
     const g: Record<DateGroup, Reminder[]> = {
       overdue: [], today: [], tomorrow: [], "this-week": [], later: [], "no-date": [],
@@ -383,10 +512,20 @@ export function RemindersPage({
     return g;
   }, [filtered]);
 
-  const quickReminder = quickId ? reminders.find((r) => r.id === quickId) : null;
+  const quickReminder = quickId
+    ? (reminderOverrides[quickId] ?? reminders.find((r) => r.id === quickId) ?? null)
+    : null;
+
+  // ── Callbacks ──────────────────────────────────────────────────────────────
 
   function handleFinanceSave(entry: FinanceEntry) {
     setFinanceEntries((prev) => [...prev, entry]);
+    setQuickId(null);
+  }
+
+  /** Called when QuickFinanceModal adds a FinancialItem (receivable/payable). */
+  function handleReminderUpdated(updated: Reminder) {
+    setReminderOverrides((prev) => ({ ...prev, [updated.id]: updated }));
     setQuickId(null);
   }
 
@@ -423,7 +562,7 @@ export function RemindersPage({
   // ── Main view ──────────────────────────────────────────────────────────────
   return (
     <>
-      <div className="max-w-2xl mx-auto px-6 py-10 pb-24">
+      <div className="max-w-2xl mx-auto px-6 py-10 pb-28">
         {/* Header */}
         <div className="mb-5 flex items-end justify-between">
           <div>
@@ -471,7 +610,7 @@ export function RemindersPage({
           )}
         </div>
 
-        {/* Filter tabs — horizontal scroll */}
+        {/* Filter tabs */}
         <div className="flex gap-1.5 overflow-x-auto pb-1 mb-6 scrollbar-hide">
           {FILTER_TABS.map(({ key, label }) => {
             const count = key === "all"
@@ -548,6 +687,7 @@ export function RemindersPage({
           reminder={quickReminder}
           onSave={handleFinanceSave}
           onCancel={() => setQuickId(null)}
+          onReminderUpdated={handleReminderUpdated}
         />
       )}
     </>
