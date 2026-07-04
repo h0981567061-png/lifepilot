@@ -17,6 +17,7 @@ import { FinancePage }             from "./pages/FinancePage";
 import { MyPage }                  from "./pages/MyPage";
 import { EditPage }                from "./pages/EditPage";
 import { CategoryManagementPage }  from "./pages/CategoryManagementPage";
+import { WorkProfilesPage }        from "./pages/WorkProfilesPage";
 import { CategoryProvider }        from "./CategoryContext";
 import {
   loadFinanceEntries,
@@ -830,6 +831,7 @@ export default function App() {
   const [aiSource, setAiSource] = useState<"ai" | "rule" | null>(null);
   const [activePage, setActivePage] = useState<PageId>("add");
   const [showCategoryMgmt, setShowCategoryMgmt] = useState(false);
+  const [showWorkProfiles, setShowWorkProfiles] = useState(false);
   const [savedReminders, setSavedReminders] = useState<Reminder[]>(() => loadReminders());
   const [bulkDatePickerOpen, setBulkDatePickerOpen] = useState(false);
   const [bulkDateValue, setBulkDateValue] = useState("");
@@ -1396,7 +1398,10 @@ export default function App() {
         />
       )}
       {activePage === "my" && (
-        <MyPage onOpenCategoryMgmt={() => setShowCategoryMgmt(true)} />
+        <MyPage
+          onOpenCategoryMgmt={() => setShowCategoryMgmt(true)}
+          onOpenWorkProfiles={() => setShowWorkProfiles(true)}
+        />
       )}
       {editingReminderId !== null &&
         !!savedReminders.find((r) => r.id === editingReminderId) && (
@@ -1415,6 +1420,11 @@ export default function App() {
             savedReminders={savedReminders}
             onClose={() => setShowCategoryMgmt(false)}
           />
+        </div>
+      )}
+      {showWorkProfiles && (
+        <div className="fixed inset-0 bg-gray-950 z-40 overflow-y-auto">
+          <WorkProfilesPage onClose={() => setShowWorkProfiles(false)} />
         </div>
       )}
       </main>

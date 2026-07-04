@@ -2,6 +2,7 @@
 
 interface Props {
   onOpenCategoryMgmt: () => void;
+  onOpenWorkProfiles: () => void;
 }
 
 interface MenuItem {
@@ -12,8 +13,15 @@ interface MenuItem {
   onClick?: () => void;
 }
 
-export function MyPage({ onOpenCategoryMgmt }: Props) {
+export function MyPage({ onOpenCategoryMgmt, onOpenWorkProfiles }: Props) {
   const menuItems: MenuItem[] = [
+    {
+      icon: "💼",
+      label: "工作資料板",
+      desc: "管理不同工作與工作模板",
+      available: true,
+      onClick: onOpenWorkProfiles,
+    },
     {
       icon: "◈",
       label: "群組管理",
