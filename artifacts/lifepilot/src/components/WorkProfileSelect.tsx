@@ -6,7 +6,6 @@
 import { useMemo } from "react";
 import {
   getWorkProfiles,
-  WORK_TEMPLATE_LABELS,
   type WorkProfile,
 } from "../workProfileStore";
 
@@ -46,8 +45,6 @@ export function WorkProfileSelect({ value, onChange, currentProfileId }: Props) 
         <option key={p.id} value={p.id}>
           {p.name}
           {!p.enabled ? "（已停用）" : ""}
-          {"  "}
-          {WORK_TEMPLATE_LABELS[p.templateType]}
         </option>
       ))}
     </select>

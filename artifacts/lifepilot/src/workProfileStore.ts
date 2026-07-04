@@ -6,12 +6,24 @@
 
 export type WorkTemplateType = "general_work" | "airport_transfer";
 
+// Long-term personal/vehicle data attached to a WorkProfile.
+// NOT per-trip data (flights, passengers, routes → stored on Reminder.templateData).
+export interface WorkProfileData {
+  driverName?: string;
+  driverPhone?: string;
+  vehiclePlate?: string;
+  vehicleModel?: string;
+  vehicleSeats?: string;
+  companyName?: string;
+}
+
 export interface WorkProfile {
   id: string;
   name: string;
   templateType: WorkTemplateType;
   enabled: boolean;
   note: string;
+  profileData?: WorkProfileData;
   createdAt: string;
   updatedAt: string;
 }
