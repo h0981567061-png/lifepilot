@@ -27,6 +27,12 @@ export interface AIEvent {
   category: string | null;
   source: string | null;
   merchant: string | null;
+  // ── Airport Transfer passenger fields ──────────────────────────────────────
+  passengerName?: string | null;   // 乘客姓名（非司機）
+  passengerPhone?: string | null;  // 乘客電話（非司機）
+  passengerCount?: number | null;  // 乘客人數（整數）
+  luggage?: string | null;         // 行李描述
+  destination?: string | null;     // 目的地地址
 }
 
 export interface AIParseResult {

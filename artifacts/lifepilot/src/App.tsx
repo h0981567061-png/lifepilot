@@ -11,6 +11,8 @@ import {
   toggleReminderComplete,
   updateReminder,
   type Reminder,
+  type AirportTransferTemplateData,
+  type FinancialItem,
 } from "./store";
 import { RemindersPage }          from "./pages/RemindersPage";
 import { FinancePage }             from "./pages/FinancePage";
@@ -931,7 +933,9 @@ export default function App() {
         primaryLabel = TYPE_LABEL[type] ?? "一般事項";
         isFirst = false;
       }
-      return {
+
+      // ── Base PreviewItem (common to all types) ──────────────────────────────
+      const item: PreviewItem = {
         ...emptyPreviewItem(type),
         type,
         category: e.category ?? "",
@@ -940,7 +944,6 @@ export default function App() {
         startTime: normalizeTime(e.startTime ?? ""),
         endTime: normalizeTime(e.endTime ?? ""),
         allDay: !e.startTime,
-
         location: e.location ?? "",
         notes: e.notes ?? "",
         flightNumber: e.flightNumber ?? "",
@@ -966,6 +969,42 @@ export default function App() {
             ? [e.title, e.notes, ...(e.items ?? [])].filter(Boolean).join("\n")
             : "",
       };
+
+      // ── Airport Transfer: templateData + receivable financial item ───────────
+      if (type === "Airport Transfer") {
+        // Build templateData.airportTransfer from passenger-specific fields
+        const atd: AirportTransferTemplateData = {};
+        if (e.passengerName)  atd.passengerName  = e.passengerName;
+        if (e.passengerPhone) atd.passengerPhone = e.passengerPhone;
+        if (typeof e.passengerCount === "number" && e.passengerCount > 0)
+          atd.passengerCount = e.passengerCount;
+        if (e.luggage)      atd.luggage      = e.luggage;
+        if (e.destination)  atd.destination  = e.destination;
+        if (e.location)     atd.pickupLocation = e.location;
+        if (e.flightNumber) atd.flightNumber = e.flightNumber;
+        if (e.transferType === "接機")      atd.transferType = "pickup";
+        else if (e.transferType === "送機") atd.transferType = "dropoff";
+        if (Object.keys(atd).length > 0) {
+          item.templateData = { airportTransfer: atd };
+        }
+
+        // Convert future-receivable amount → FinancialItem (type=receivable).
+        // Clear item.amount so deriveFinancialItems in EditPage doesn't double-count.
+        const rawAmt = String(e.amount ?? "").replace(/[^\d.]/g, "");
+        const amtNum = parseFloat(rawAmt);
+        if (!isNaN(amtNum) && amtNum > 0) {
+          const fi: FinancialItem = {
+            id: crypto.randomUUID(),
+            title: "待收款",
+            type: "receivable",
+            amount: amtNum,
+          };
+          item.financialItems = [fi];
+          item.amount = ""; // prevent double-counting via legacy fallback path
+        }
+      }
+
+      return item;
     });
 
     return {
