@@ -1,34 +1,100 @@
 // ─── WorkProfilesPage ─────────────────────────────────────────────────────────
 //
-// Unified single-page add/edit flow.
-// Work name + template-specific fields + custom fields + enabled toggle
-// are all edited in one form. No separate "profile data" sub-page.
+// Dynamic field architecture for work profile creation and editing.
+// All fields (system-suggested + custom) are stored as WorkField[].
+// Work name → detection (new only) → suggested fields → editable/deletable
+// → custom fields → enabled toggle → save.  Single page, no sub-pages.
 
 import { useState, useEffect } from "react";
 import {
   type WorkProfile,
-  type WorkProfileData,
+  type WorkField,
   type WorkTemplateType,
-  type CustomField,
+  type WorkProfileData,
   getWorkProfiles,
   createWorkProfile,
   updateWorkProfile,
   deleteWorkProfile,
+  detectWorkType,
+  getDefaultFields,
 } from "../workProfileStore";
 import type { Reminder } from "../store";
 
-// ─── TextInput helper ─────────────────────────────────────────────────────────
+// ─── Helpers: convert legacy profileData → WorkField[] ───────────────────────
+// Used when editing old profiles that predate the fields[] data model.
+
+function legacyDataToFields(data: WorkProfileData, type: WorkTemplateType): WorkField[] {
+  const make = (
+    label: string,
+    value: string,
+    fieldType: "text" | "tel",
+    sortOrder: number
+  ): WorkField => ({
+    id: crypto.randomUUID(),
+    label,
+    value: value ?? "",
+    fieldType,
+    sortOrder,
+    source: "system_suggested",
+    deletable: true,
+  });
+
+  const out: WorkField[] = [];
+
+  if (type === "airport_transfer") {
+    out.push(make("姓名", data.driverName ?? "", "text", 0));
+    out.push(make("電話", data.driverPhone ?? "", "tel", 1));
+    out.push(make("車牌", data.vehiclePlate ?? "", "text", 2));
+    out.push(make("車型", data.vehicleModel ?? "", "text", 3));
+    out.push(make("座位數", data.vehicleSeats ?? "", "text", 4));
+    out.push(make("靠行公司", data.companyName ?? "", "text", 5));
+  } else {
+    out.push(make("公司／單位", data.companyName ?? "", "text", 0));
+    out.push(make("職稱／工作角色", data.jobRole ?? "", "text", 1));
+    out.push(make("工作地點", data.workLocation ?? "", "text", 2));
+    out.push(make("聯絡人", data.contactName ?? "", "text", 3));
+    out.push(make("聯絡電話", data.contactPhone ?? "", "tel", 4));
+  }
+
+  (data.customFields ?? []).forEach((cf, i) => {
+    out.push({
+      id: cf.id,
+      label: cf.label,
+      value: cf.value,
+      fieldType: "text",
+      sortOrder: 100 + i,
+      source: "user_custom",
+      deletable: true,
+    });
+  });
+
+  return out;
+}
+
+function initFieldsForProfile(profile: WorkProfile): WorkField[] {
+  if (profile.fields && profile.fields.length > 0) {
+    return [...profile.fields];
+  }
+  if (profile.profileData) {
+    return legacyDataToFields(profile.profileData, profile.templateType);
+  }
+  return getDefaultFields(profile.templateType);
+}
+
+// ─── Small UI components ──────────────────────────────────────────────────────
 
 function TextInput({
   value,
   onChange,
-  placeholder,
+  placeholder = "",
   type = "text",
+  className = "",
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   type?: string;
+  className?: string;
 }) {
   return (
     <input
@@ -36,20 +102,12 @@ function TextInput({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/60 transition-colors"
+      className={`w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/60 transition-colors ${className}`}
     />
   );
 }
 
-// ─── ToggleSwitch helper ─────────────────────────────────────────────────────
-
-function ToggleSwitch({
-  checked,
-  onChange,
-}: {
-  checked: boolean;
-  onChange: () => void;
-}) {
+function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return (
     <button
       type="button"
@@ -67,68 +125,102 @@ function ToggleSwitch({
   );
 }
 
-// ─── Divider ─────────────────────────────────────────────────────────────────
-
-function SectionDivider() {
+function Divider() {
   return <div className="h-px bg-white/5" />;
 }
 
-// ─── CustomFieldBlock ─────────────────────────────────────────────────────────
-// One custom-field row: label input + value input + delete button.
+// ─── DeleteBtn ────────────────────────────────────────────────────────────────
 
-function CustomFieldBlock({
-  field,
-  onChange,
-  onDelete,
-}: {
-  field: CustomField;
-  onChange: (patch: Partial<CustomField>) => void;
-  onDelete: () => void;
-}) {
+function DeleteBtn({ onClick }: { onClick: () => void }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5 space-y-2.5">
-      <div>
-        <label className="block text-xs text-gray-500 mb-1 font-medium">
-          欄位名稱
-        </label>
-        <TextInput
-          value={field.label}
-          onChange={(v) => onChange({ label: v })}
-          placeholder=""
-        />
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="刪除欄位"
+      className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-gray-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+    >
+      ×
+    </button>
+  );
+}
+
+// ─── FieldRow ─────────────────────────────────────────────────────────────────
+// Renders one WorkField — label row + value input + optional delete confirm.
+
+function FieldRow({
+  field,
+  isPendingDelete,
+  onValueChange,
+  onLabelChange,
+  onDeleteRequest,
+  onDeleteConfirm,
+  onDeleteCancel,
+}: {
+  field: WorkField;
+  isPendingDelete: boolean;
+  onValueChange: (v: string) => void;
+  onLabelChange: (v: string) => void;
+  onDeleteRequest: () => void;
+  onDeleteConfirm: () => void;
+  onDeleteCancel: () => void;
+}) {
+  const isCustom = field.source === "user_custom";
+
+  return (
+    <div className="space-y-1.5">
+      {/* Label row */}
+      <div className="flex items-center gap-2">
+        {isCustom ? (
+          <TextInput
+            value={field.label}
+            onChange={onLabelChange}
+            placeholder="欄位名稱"
+            className="flex-1 text-xs py-2"
+          />
+        ) : (
+          <span className="flex-1 text-xs text-gray-500 font-medium">{field.label}</span>
+        )}
+        <DeleteBtn onClick={onDeleteRequest} />
       </div>
-      <div>
-        <label className="block text-xs text-gray-500 mb-1 font-medium">
-          內容
-        </label>
-        <TextInput
-          value={field.value}
-          onChange={(v) => onChange({ value: v })}
-          placeholder=""
-        />
-      </div>
-      <button
-        type="button"
-        onClick={onDelete}
-        className="text-xs text-rose-400 hover:text-rose-300 transition-colors pt-0.5"
-      >
-        刪除此欄位
-      </button>
+
+      {/* Value input */}
+      <TextInput
+        type={field.fieldType}
+        value={field.value}
+        onChange={onValueChange}
+        placeholder=""
+      />
+
+      {/* Delete confirmation inline */}
+      {isPendingDelete && (
+        <div className="rounded-xl border border-rose-500/25 bg-rose-500/8 px-4 py-3 space-y-2">
+          <p className="text-xs text-rose-300 font-medium">確定要刪除「{field.label}」欄位？</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onDeleteConfirm}
+              className="flex-1 py-2 rounded-lg text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 transition-colors"
+            >
+              確認刪除
+            </button>
+            <button
+              type="button"
+              onClick={onDeleteCancel}
+              className="flex-1 py-2 rounded-lg text-xs font-medium text-gray-300 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── WorkProfileEditForm ───────────────────────────────────────────────────────
-// Shared by both "add" and "edit". Renders name, template-specific fields,
-// custom fields, and the enabled toggle in one page.
+// Unified add / edit form with dynamic field architecture.
 
-interface SavePayload {
-  name: string;
-  templateType: WorkTemplateType;
-  enabled: boolean;
-  note: string;
-  profileData: WorkProfileData;
-}
+type SavePayload = Omit<WorkProfile, "id" | "createdAt" | "updatedAt">;
 
 interface WorkProfileEditFormProps {
   initialProfile?: WorkProfile;
@@ -143,213 +235,133 @@ function WorkProfileEditForm({
   onCancel,
   saveLabel,
 }: WorkProfileEditFormProps) {
-  const isNew = !initialProfile;
-  const templateType: WorkTemplateType =
-    initialProfile?.templateType ?? "general_work";
-  const isAirport = templateType === "airport_transfer";
+  const isEdit = !!initialProfile;
 
+  // Name — drives detection for new profiles only
   const [name, setName] = useState(initialProfile?.name ?? "");
-  const [profileData, setProfileData] = useState<WorkProfileData>(
-    initialProfile?.profileData ?? {}
+
+  // detectedType: for edit, fixed to existing templateType; for new, live from name
+  const [detectedType, setDetectedType] = useState<WorkTemplateType>(
+    initialProfile?.templateType ?? "general_work"
   );
-  const [customFields, setCustomFields] = useState<CustomField[]>(
-    initialProfile?.profileData?.customFields ?? []
+
+  // Dynamic fields — the core data list
+  const [fields, setFields] = useState<WorkField[]>(() =>
+    initialProfile ? initFieldsForProfile(initialProfile) : getDefaultFields("general_work")
   );
+
   const [enabled, setEnabled] = useState(initialProfile?.enabled ?? true);
 
-  const updData = (patch: Partial<WorkProfileData>) =>
-    setProfileData((d) => ({ ...d, ...patch }));
+  // ID of the field waiting for deletion confirmation; null = none
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
-  // ── custom-field ops ──
-  const addCF = () =>
-    setCustomFields((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), label: "", value: "" },
-    ]);
+  // ── Name change: live detection for NEW profiles ──
+  function handleNameChange(v: string) {
+    setName(v);
+    if (isEdit) return;
 
-  const updCF = (id: string, patch: Partial<CustomField>) =>
-    setCustomFields((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, ...patch } : f))
+    const newType = detectWorkType(v);
+    if (newType === detectedType) return;
+
+    // Only auto-reset if all system_suggested fields are still empty
+    const allEmpty = fields.every(
+      (f) => f.source === "system_suggested" && f.value.trim() === ""
     );
+    if (allEmpty) {
+      setFields(getDefaultFields(newType));
+    }
+    setDetectedType(newType);
+  }
 
-  const delCF = (id: string) =>
-    setCustomFields((prev) => prev.filter((f) => f.id !== id));
+  // ── Field mutations ──
+  const updField = (id: string, patch: Partial<WorkField>) =>
+    setFields((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
 
-  const canSave = name.trim().length > 0;
+  function handleDeleteRequest(id: string) {
+    const f = fields.find((x) => x.id === id);
+    if (!f) return;
+    if (!f.value.trim()) {
+      // Empty field — delete immediately
+      setFields((prev) => prev.filter((x) => x.id !== id));
+      if (pendingDeleteId === id) setPendingDeleteId(null);
+    } else {
+      // Filled field — ask confirmation
+      setPendingDeleteId(id);
+    }
+  }
 
-  const handleSave = () => {
-    const mergedData: WorkProfileData = {
-      ...profileData,
-      customFields: customFields.length > 0 ? customFields : undefined,
-    };
+  function handleDeleteConfirm() {
+    if (!pendingDeleteId) return;
+    setFields((prev) => prev.filter((f) => f.id !== pendingDeleteId));
+    setPendingDeleteId(null);
+  }
+
+  function addCustomField() {
+    const maxOrder = fields.reduce((m, f) => Math.max(m, f.sortOrder), -1);
+    setFields((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        label: "",
+        value: "",
+        fieldType: "text",
+        sortOrder: maxOrder + 1,
+        source: "user_custom",
+        deletable: true,
+      },
+    ]);
+  }
+
+  function handleSave() {
+    const sorted = [...fields].sort((a, b) => a.sortOrder - b.sortOrder);
+    // For edit: preserve existing templateType; for new: use detected type
+    const templateType: WorkTemplateType = isEdit
+      ? (initialProfile?.templateType ?? "general_work")
+      : detectedType;
+
     onSave({
       name: name.trim(),
       templateType,
       enabled,
       note: initialProfile?.note ?? "",
-      profileData: mergedData,
+      fields: sorted,
+      // Preserve legacy profileData on edit so airport-transfer template still works
+      profileData: initialProfile?.profileData,
     });
-  };
+  }
+
+  const canSave = name.trim().length > 0;
+  const sorted = [...fields].sort((a, b) => a.sortOrder - b.sortOrder);
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-5">
-      {/* ── 1. Name ── */}
+      {/* ── 1. Work name (not deletable) ── */}
       <div>
-        <label className="block text-xs text-gray-500 mb-1.5 font-medium">
-          工作名稱
-        </label>
-        <TextInput
-          value={name}
-          onChange={setName}
-          placeholder="輸入工作名稱"
-        />
+        <label className="block text-xs text-gray-500 mb-1.5 font-medium">工作名稱</label>
+        <TextInput value={name} onChange={handleNameChange} placeholder="輸入工作名稱" />
       </div>
 
-      <SectionDivider />
+      <Divider />
 
-      {/* ── 2. Template-specific fields ── */}
-      {isAirport ? (
-        <div className="space-y-4">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-            基本資料
-          </p>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
-              姓名
-            </label>
-            <TextInput
-              value={profileData.driverName ?? ""}
-              onChange={(v) => updData({ driverName: v })}
-              placeholder=""
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
-              電話
-            </label>
-            <TextInput
-              type="tel"
-              value={profileData.driverPhone ?? ""}
-              onChange={(v) => updData({ driverPhone: v })}
-              placeholder=""
-            />
-          </div>
-
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider pt-1">
-            車輛資料
-          </p>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
-              車牌
-            </label>
-            <TextInput
-              value={profileData.vehiclePlate ?? ""}
-              onChange={(v) => updData({ vehiclePlate: v })}
-              placeholder=""
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
-              車型
-            </label>
-            <TextInput
-              value={profileData.vehicleModel ?? ""}
-              onChange={(v) => updData({ vehicleModel: v })}
-              placeholder=""
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
-              座位數
-            </label>
-            <TextInput
-              value={profileData.vehicleSeats ?? ""}
-              onChange={(v) => updData({ vehicleSeats: v })}
-              placeholder=""
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
-              靠行公司
-            </label>
-            <TextInput
-              value={profileData.companyName ?? ""}
-              onChange={(v) => updData({ companyName: v })}
-              placeholder=""
-            />
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
-              公司／單位
-            </label>
-            <TextInput
-              value={profileData.companyName ?? ""}
-              onChange={(v) => updData({ companyName: v })}
-              placeholder=""
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
-              職稱／工作角色
-            </label>
-            <TextInput
-              value={profileData.jobRole ?? ""}
-              onChange={(v) => updData({ jobRole: v })}
-              placeholder=""
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
-              工作地點
-            </label>
-            <TextInput
-              value={profileData.workLocation ?? ""}
-              onChange={(v) => updData({ workLocation: v })}
-              placeholder=""
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
-              聯絡人
-            </label>
-            <TextInput
-              value={profileData.contactName ?? ""}
-              onChange={(v) => updData({ contactName: v })}
-              placeholder=""
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
-              聯絡電話
-            </label>
-            <TextInput
-              type="tel"
-              value={profileData.contactPhone ?? ""}
-              onChange={(v) => updData({ contactPhone: v })}
-              placeholder=""
-            />
-          </div>
-        </div>
-      )}
-
-      <SectionDivider />
-
-      {/* ── 3. Custom fields ── */}
-      <div className="space-y-3">
-        {customFields.map((cf) => (
-          <CustomFieldBlock
-            key={cf.id}
-            field={cf}
-            onChange={(patch) => updCF(cf.id, patch)}
-            onDelete={() => delCF(cf.id)}
+      {/* ── 2. Dynamic field list ── */}
+      <div className="space-y-4">
+        {sorted.map((field) => (
+          <FieldRow
+            key={field.id}
+            field={field}
+            isPendingDelete={pendingDeleteId === field.id}
+            onValueChange={(v) => updField(field.id, { value: v })}
+            onLabelChange={(v) => updField(field.id, { label: v })}
+            onDeleteRequest={() => handleDeleteRequest(field.id)}
+            onDeleteConfirm={handleDeleteConfirm}
+            onDeleteCancel={() => setPendingDeleteId(null)}
           />
         ))}
+
+        {/* Add custom field button */}
         <button
           type="button"
-          onClick={addCF}
+          onClick={addCustomField}
           className="w-full py-3 rounded-xl border border-dashed border-white/15 text-sm font-medium text-gray-400 hover:text-white hover:border-white/30 transition-colors flex items-center justify-center gap-2"
         >
           <span className="text-base leading-none">＋</span>
@@ -357,20 +369,18 @@ function WorkProfileEditForm({
         </button>
       </div>
 
-      <SectionDivider />
+      <Divider />
 
-      {/* ── 4. Enabled toggle (always AFTER all data fields) ── */}
-      <div className="flex items-center justify-between py-1">
+      {/* ── 3. Enabled toggle (always AFTER all data fields) ── */}
+      <div className="flex items-center justify-between py-0.5">
         <div>
           <p className="text-sm text-white font-medium">啟用此工作</p>
-          <p className="text-xs text-gray-500 mt-0.5">
-            停用後仍保留工作與相關資料
-          </p>
+          <p className="text-xs text-gray-500 mt-0.5">停用後仍保留工作與相關資料</p>
         </div>
-        <ToggleSwitch checked={enabled} onChange={() => setEnabled(!enabled)} />
+        <ToggleSwitch checked={enabled} onChange={() => setEnabled((v) => !v)} />
       </div>
 
-      {/* ── 5. Buttons ── */}
+      {/* ── 4. Action buttons ── */}
       <div className="flex gap-2 pt-1">
         <button
           type="button"
@@ -392,15 +402,17 @@ function WorkProfileEditForm({
   );
 }
 
-// ─── WorkProfile Card ─────────────────────────────────────────────────────────
+// ─── WorkCard ─────────────────────────────────────────────────────────────────
 
-interface WorkCardProps {
+function WorkCard({
+  profile,
+  onEdit,
+  onDelete,
+}: {
   profile: WorkProfile;
   onEdit: () => void;
   onDelete: () => void;
-}
-
-function WorkCard({ profile, onEdit, onDelete }: WorkCardProps) {
+}) {
   return (
     <div
       className={`rounded-2xl border px-5 py-4 transition-colors ${
@@ -410,12 +422,9 @@ function WorkCard({ profile, onEdit, onDelete }: WorkCardProps) {
       }`}
     >
       <div className="flex items-start gap-3">
-        {/* Icon */}
         <div className="w-10 h-10 rounded-xl flex items-center justify-center text-base shrink-0 border bg-blue-500/10 border-blue-500/20 text-blue-400">
           💼
         </div>
-
-        {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-semibold text-white">{profile.name}</p>
@@ -425,15 +434,9 @@ function WorkCard({ profile, onEdit, onDelete }: WorkCardProps) {
               </span>
             )}
           </div>
-          {profile.note && (
-            <p className="text-xs text-gray-600 mt-1 line-clamp-2">
-              {profile.note}
-            </p>
-          )}
         </div>
       </div>
 
-      {/* Actions */}
       <div className="flex gap-2 mt-4">
         <button
           type="button"
@@ -454,7 +457,7 @@ function WorkCard({ profile, onEdit, onDelete }: WorkCardProps) {
   );
 }
 
-// ─── Delete Confirm ───────────────────────────────────────────────────────────
+// ─── DeleteConfirm ────────────────────────────────────────────────────────────
 
 function DeleteConfirm({
   profile,
@@ -493,7 +496,7 @@ function DeleteConfirm({
   );
 }
 
-// ─── Delete Blocked ───────────────────────────────────────────────────────────
+// ─── DeleteBlocked ────────────────────────────────────────────────────────────
 
 function DeleteBlocked({
   profile,
@@ -510,8 +513,7 @@ function DeleteBlocked({
         <p className="text-sm font-semibold text-white">無法刪除此工作資料板</p>
         <p className="text-xs text-gray-400 mt-2 leading-relaxed">
           此工作目前仍有{" "}
-          <span className="text-amber-300 font-semibold">{linkedCount}</span>{" "}
-          個事項正在使用。
+          <span className="text-amber-300 font-semibold">{linkedCount}</span> 個事項正在使用。
         </p>
         <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
           請先將相關事項改為其他工作，或設為「不指定工作」。
@@ -579,9 +581,7 @@ export function WorkProfilesPage({ onClose, savedReminders }: Props) {
   }
 
   const editingProfile =
-    mode.kind === "editing"
-      ? profiles.find((p) => p.id === mode.id)
-      : undefined;
+    mode.kind === "editing" ? profiles.find((p) => p.id === mode.id) : undefined;
 
   const isFormMode = mode.kind === "adding" || mode.kind === "editing";
 
@@ -605,17 +605,17 @@ export function WorkProfilesPage({ onClose, savedReminders }: Props) {
           </svg>
           返回
         </button>
-        <h1 className="text-base font-semibold text-white">
+        <h1 className="text-base font-semibold text-white truncate">
           {mode.kind === "adding"
             ? "新增工作"
             : mode.kind === "editing" && editingProfile
-            ? `編輯工作 — ${editingProfile.name}`
+            ? `編輯 — ${editingProfile.name}`
             : "我的工作"}
         </h1>
       </div>
 
       <div className="max-w-2xl mx-auto px-5 pt-6 space-y-4">
-        {/* Adding / Editing form */}
+        {/* ── Add / Edit form ── */}
         {isFormMode && (
           <WorkProfileEditForm
             initialProfile={editingProfile}
@@ -625,7 +625,7 @@ export function WorkProfilesPage({ onClose, savedReminders }: Props) {
           />
         )}
 
-        {/* Profile list */}
+        {/* ── List mode ── */}
         {mode.kind === "list" && profiles.length === 0 && (
           <div className="text-center py-16">
             <p className="text-4xl mb-3">💼</p>
@@ -635,21 +635,19 @@ export function WorkProfilesPage({ onClose, savedReminders }: Props) {
         )}
 
         {mode.kind === "list" &&
-          profiles.map((profile) => {
-            return (
-              <WorkCard
-                key={profile.id}
-                profile={profile}
-                onEdit={() => setMode({ kind: "editing", id: profile.id })}
-                onDelete={() => handleRequestDelete(profile.id)}
-              />
-            );
-          })}
+          profiles.map((profile) => (
+            <WorkCard
+              key={profile.id}
+              profile={profile}
+              onEdit={() => setMode({ kind: "editing", id: profile.id })}
+              onDelete={() => handleRequestDelete(profile.id)}
+            />
+          ))}
 
-        {/* Delete / Block delete overlays (replace the card in-place) */}
-        {mode.kind === "deleting" && (
+        {/* ── Delete confirm (overlays list) ── */}
+        {mode.kind === "deleting" &&
           (() => {
-            const p = profiles.find((pr) => pr.id === mode.id);
+            const p = profiles.find((x) => x.id === mode.id);
             return p ? (
               <DeleteConfirm
                 key={p.id}
@@ -658,12 +656,11 @@ export function WorkProfilesPage({ onClose, savedReminders }: Props) {
                 onCancel={() => setMode({ kind: "list" })}
               />
             ) : null;
-          })()
-        )}
+          })()}
 
-        {mode.kind === "block_delete" && (
+        {mode.kind === "block_delete" &&
           (() => {
-            const p = profiles.find((pr) => pr.id === mode.id);
+            const p = profiles.find((x) => x.id === mode.id);
             return p ? (
               <DeleteBlocked
                 key={p.id}
@@ -672,10 +669,9 @@ export function WorkProfilesPage({ onClose, savedReminders }: Props) {
                 onClose={() => setMode({ kind: "list" })}
               />
             ) : null;
-          })()
-        )}
+          })()}
 
-        {/* Add button */}
+        {/* ── Add button ── */}
         {mode.kind === "list" && (
           <button
             type="button"
@@ -687,7 +683,7 @@ export function WorkProfilesPage({ onClose, savedReminders }: Props) {
           </button>
         )}
 
-        {/* Stats footer */}
+        {/* ── Stats ── */}
         {mode.kind === "list" && profiles.length > 0 && (
           <p className="text-xs text-gray-700 text-center pt-2">
             共 {profiles.length} 個工作資料板
