@@ -124,11 +124,9 @@ function ItemDisplay({ item }: { item: PreviewItem }) {
       else if (item.startTime) meta.push(normalizeTime(item.startTime));
       if (item.district) meta.push(item.district);
       if (item.vehicleType) meta.push(item.vehicleType);
-      if (item.price) meta.push(`${item.price} 元`);
       break;
     case "Payment":
       if (item.date) meta.push(`截止 ${item.date.replace(/-/g, "/")}`);
-      if (item.amount) meta.push(`${item.amount} 元`);
       break;
     case "Income":
       if (item.amount) meta.push(`${item.amount} 元`);
@@ -267,13 +265,6 @@ function TypeSpecificEditor({ draft, setDraft }: EditorProps) {
               placeholder="如 正七、廂型"
             />
           </FormRow>
-          <FormRow label="費用">
-            <TextInput
-              value={draft.price}
-              onChange={(v) => upd({ price: v })}
-              placeholder="金額（元）"
-            />
-          </FormRow>
         </>
       );
 
@@ -331,13 +322,6 @@ function TypeSpecificEditor({ draft, setDraft }: EditorProps) {
               onChange={(e) => upd({ date: e.target.value, dueDate: e.target.value })}
               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
               style={{ colorScheme: "dark" }}
-            />
-          </FormRow>
-          <FormRow label="金額">
-            <TextInput
-              value={draft.amount}
-              onChange={(v) => upd({ amount: v })}
-              placeholder="金額（元）"
             />
           </FormRow>
           <FormRow label="帳戶">

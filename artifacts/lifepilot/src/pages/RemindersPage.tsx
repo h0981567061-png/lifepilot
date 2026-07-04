@@ -143,7 +143,6 @@ function TypeDetails({ reminder }: { reminder: Reminder }) {
           {reminder.flightNumber && <span>✈ {reminder.flightNumber}</span>}
           {reminder.district && <span>{reminder.district}</span>}
           {reminder.vehicleType && <span>{reminder.vehicleType}</span>}
-          {reminder.price && <span>{reminder.price} 元</span>}
         </div>
       );
     case "Shopping":
@@ -161,7 +160,6 @@ function TypeDetails({ reminder }: { reminder: Reminder }) {
       return (
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
           {reminder.dueDate && <span>截止 {reminder.dueDate}</span>}
-          {reminder.amount && <span className="text-purple-400/70">{reminder.amount} 元</span>}
         </div>
       );
     case "Medical":

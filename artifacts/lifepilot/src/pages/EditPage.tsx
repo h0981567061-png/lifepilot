@@ -957,9 +957,6 @@ export function EditPage({
           <FieldRow label="車型">
             <TextInput value={vehicleType} onChange={setVehicleType} placeholder="如 轎車、廂型" />
           </FieldRow>
-          <FieldRow label="費用">
-            <TextInput value={price} onChange={setPrice} placeholder="金額（元）（選填）" />
-          </FieldRow>
         </>
       )}
 
@@ -999,9 +996,6 @@ export function EditPage({
             <input type="date" value={paymentDueDate} onChange={(e) => setPaymentDueDate(e.target.value)}
               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
               style={{ colorScheme: "dark" }} />
-          </FieldRow>
-          <FieldRow label="金額">
-            <TextInput value={incomeAmount} onChange={setIncomeAmount} placeholder="原始金額（元）（選填）" />
           </FieldRow>
           <FieldRow label="帳戶">
             <TextInput value={account} onChange={setAccount} placeholder="帳戶或繳費方式（選填）" />
