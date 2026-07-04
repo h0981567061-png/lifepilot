@@ -112,7 +112,7 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: () =>
     <button
       type="button"
       onClick={onChange}
-      className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
+      className={`relative w-12 h-6 rounded-full overflow-hidden transition-colors duration-200 ${
         checked ? "bg-blue-600" : "bg-white/10"
       }`}
     >
