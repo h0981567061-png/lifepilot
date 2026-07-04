@@ -120,6 +120,8 @@ export interface PreviewItem {
   reminders: ReminderNotification[];
   // Work profile association (optional)
   workProfileId?: string;
+  // Template data — airport transfer trip details (separate from unified 收支 system)
+  templateData?: import("./store").TemplateData;
   // Financial status
   financialStatus: "none" | "receivable" | "payable";
   expectedAmount?: number;

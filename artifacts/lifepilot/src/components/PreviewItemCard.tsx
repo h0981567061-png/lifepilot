@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { PreviewItem, AllType } from "../previewTypes";
 import {
   ALL_TYPES,
@@ -11,6 +11,8 @@ import { ReminderEditor } from "./ReminderEditor";
 import { TimePicker } from "./TimePicker";
 import { CategorySelect } from "./CategorySelect";
 import { WorkProfileSelect } from "./WorkProfileSelect";
+import { AirportTransferTemplateFields } from "./AirportTransferTemplateFields";
+import { getWorkProfiles } from "../workProfileStore";
 import type { FinancialItem } from "../store";
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
@@ -504,6 +506,27 @@ export function PreviewItemCard({
   });
   const [showAddFi, setShowAddFi] = useState(false);
 
+  // ── WorkProfile switch protection ──────────────────────────────────────────
+  const allProfiles = useMemo(() => getWorkProfiles(), []);
+  const [pendingWPSwitch, setPendingWPSwitch] = useState<{ newId: string | undefined } | null>(null);
+
+  const currentWP = allProfiles.find((p) => p.id === draft.workProfileId);
+  const isAirportTemplate = currentWP?.templateType === "airport_transfer";
+
+  function handleWorkProfileChange(newId: string | undefined) {
+    const oldProfile = allProfiles.find((p) => p.id === draft.workProfileId);
+    const newProfile = allProfiles.find((p) => p.id === newId);
+    const wasAirport = oldProfile?.templateType === "airport_transfer";
+    const willBeAirport = newProfile?.templateType === "airport_transfer";
+
+    // Only confirm when leaving airport template AND there's data worth protecting
+    if (wasAirport && !willBeAirport && draft.templateData?.airportTransfer) {
+      setPendingWPSwitch({ newId });
+      return;
+    }
+    upd({ workProfileId: newId });
+  }
+
   const showTimeFields = !["Payment", "Shopping"].includes(draft.type);
   const showLocation   = !["Income", "Expense", "Payment", "Medical", "Airport Transfer"].includes(draft.type);
 
@@ -657,10 +680,58 @@ export function PreviewItemCard({
         <FormRow label="工作">
           <WorkProfileSelect
             value={draft.workProfileId}
-            onChange={(id) => upd({ workProfileId: id })}
+            onChange={handleWorkProfileChange}
             currentProfileId={draft.workProfileId}
           />
         </FormRow>
+
+        {/* WorkProfile template-switch confirmation */}
+        {pendingWPSwitch && (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-3">
+            <p className="text-xs text-gray-300 leading-relaxed">
+              切換工作後，目前的機場接送資料將不再顯示。
+            </p>
+            <p className="text-[11px] text-gray-500">（資料不會刪除，重新選回相同類型時可再次顯示）</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  upd({ workProfileId: pendingWPSwitch.newId });
+                  setPendingWPSwitch(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 transition-colors"
+              >
+                繼續切換
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingWPSwitch(null)}
+                className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-gray-300 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Airport transfer template (shown when linked WorkProfile is airport_transfer) */}
+        {isAirportTemplate && !pendingWPSwitch && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 pt-1">
+              <div className="flex-1 h-px bg-amber-500/15" />
+              <span className="text-[10px] font-semibold text-amber-400/70 tracking-wider uppercase">
+                機場接送資料
+              </span>
+              <div className="flex-1 h-px bg-amber-500/15" />
+            </div>
+            <AirportTransferTemplateFields
+              value={draft.templateData?.airportTransfer ?? {}}
+              onChange={(atd) =>
+                upd({ templateData: { ...draft.templateData, airportTransfer: atd } })
+              }
+            />
+          </div>
+        )}
 
         {/* Type-specific fields — keyed by type so local state resets on type switch */}
         <TypeSpecificEditor

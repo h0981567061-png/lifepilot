@@ -1,0 +1,711 @@
+Task-011C：建立機場接送工作模板 V1，接入 WorkProfile
+
+目前已完成：
+
+Task-011A
+- WorkProfile 資料模型
+- 工作資料板管理
+- templateType：
+  general_work
+  airport_transfer
+
+Task-011B
+- Reminder 支援 optional workProfileId
+- 新增與編輯事項可以選擇工作資料板
+- WorkProfile 刪除關聯保護
+- 停用工作資料板相容處理
+
+本次目標：
+
+當 Reminder 選擇的 WorkProfile：
+
+templateType = airport_transfer
+
+顯示「機場接送工作資料」區塊。
+
+本次只建立機場接送模板 V1。
+
+重要原則：
+
+1. WorkProfile 保存長期工作身份。
+2. Reminder 保存單次工作事項。
+3. Template Data 保存每一趟接送會改變的資料。
+4. 收支繼續使用現有統一收支系統。
+5. 不建立第二套金額、待收、待付、收入、支出系統。
+6. 不刪除舊 AirportTransfer Type。
+7. 不修改 AI Parser。
+8. 不進行舊資料 migration。
+
+────────────────────────
+
+一、資料責任分離
+
+WorkProfile 例如：
+
+A 車行
+templateType = airport_transfer
+
+WorkProfile 本次不要保存：
+
+單次航班
+單次乘客
+單次出發地
+單次目的地
+單次行李
+單次金額
+
+這些都是每一趟工作不同的資料。
+
+Reminder 保存：
+
+標題
+群組
+日期
+時間
+提醒
+地點
+workProfileId
+備註
+收支
+提醒設定
+行事曆
+
+Airport Transfer Template Data 保存：
+
+transferType
+pickupLocation
+stops
+destination
+flightNumber
+passengerName
+passengerPhone
+passengerCount
+luggage
+
+────────────────────────
+
+二、建立最小 Template Data
+
+請依目前專案資料結構選擇最小安全方式。
+
+建議：
+
+templateData?: {
+  airportTransfer?: {
+    transferType?: "pickup" | "dropoff" | "charter" | "one_way"
+    pickupLocation?: string
+    stops?: string[]
+    destination?: string
+    flightNumber?: string
+    passengerName?: string
+    passengerPhone?: string
+    passengerCount?: number
+    luggage?: string
+  }
+}
+
+如果目前專案已有 metadata、typeSpecificData 或類似結構，
+優先評估沿用。
+
+不要同時建立兩套 Template Data。
+
+不要為每個 WorkProfile 複製一份模板 schema。
+
+────────────────────────
+
+三、模板載入條件
+
+當 Reminder 選擇 WorkProfile：
+
+A 車行
+templateType = airport_transfer
+
+顯示：
+
+機場接送資料
+
+如果選擇：
+
+個人接案
+templateType = general_work
+
+不顯示機場接送資料。
+
+模板顯示來源必須是：
+
+Reminder.workProfileId
+→ 找到 WorkProfile
+→ 讀取 templateType
+→ 決定 Template UI
+
+不要使用工作名稱判斷。
+
+禁止：
+
+if name includes "車行"
+
+或：
+
+if name includes "接送"
+
+只能依 templateType。
+
+────────────────────────
+
+四、機場接送模板 V1 UI
+
+顯示：
+
+機場接送資料
+
+接送類型
+
+[ 接機 ] [ 送機 ]
+[ 單程 ] [ 包車 ]
+
+出發地
+
+________________
+
+中途停靠點
+
+目前沒有中途停靠點
+
+[ ＋ 新增停靠點 ]
+
+目的地
+
+________________
+
+航班號碼
+
+________________
+
+乘客姓名
+
+________________
+
+乘客電話
+
+________________
+
+乘客人數
+
+[ - ] 1 [ + ]
+
+行李資訊
+
+________________
+
+本次先保持簡單。
+
+不要加入：
+
+司機管理
+車輛資料庫
+派單公司
+車頭
+電子派車單
+一鍵轉單
+確認單 PDF
+報價系統
+回金系統
+
+這些留到後續版本。
+
+────────────────────────
+
+五、地點與路線的關係
+
+共用表單仍保留：
+
+地點
+
+不要刪除共用 location。
+
+機場接送模板另外保存：
+
+出發地
+中途停靠點
+目的地
+
+原因：
+
+共用 location 可作為一般顯示、搜尋或主要集合地點。
+
+路線資料則是機場接送專屬結構。
+
+本次不要自動雙向同步：
+
+location
+pickupLocation
+destination
+
+避免資料互相覆蓋。
+
+未來再決定主要地點策略。
+
+────────────────────────
+
+六、中途停靠點
+
+支援：
+
+＋ 新增停靠點
+
+每次新增一個文字欄位。
+
+例如：
+
+出發地：
+桃園機場
+
+停靠點 1：
+台北車站
+
+停靠點 2：
+信義區飯店
+
+目的地：
+南港
+
+允許：
+
+新增
+編輯
+刪除
+排序先依陣列順序保存
+
+V1 不需要拖曳排序。
+
+────────────────────────
+
+七、收支保持完全獨立
+
+機場接送模板中禁止新增：
+
+費用
+報價
+財務狀態
+待收
+待付
+已收
+已付
+付款方式
+
+這些繼續使用目前 Reminder 的：
+
+收支
+
+[ ＋ 新增款項 ]
+
+類型：
+
+待收
+待付
+收入
+支出
+
+例如：
+
+機場接送資料：
+CI836
+桃園機場 → 台北
+
+收支：
+待收 NT$ 1,200
+
+不要在 Template Data 再保存：
+
+amount = 1200
+
+避免再次產生重複金額問題。
+
+────────────────────────
+
+八、新增頁與編輯頁必須共用同一模板 UI
+
+這部分非常重要。
+
+目前專案已知歷史問題：
+
+新增頁與編輯頁存在不同 rendering logic。
+
+本次 Airport Transfer Template 不得建立：
+
+CreateAirportTemplateFields
+
+和：
+
+EditAirportTemplateFields
+
+兩套不同 JSX。
+
+請建立單一可共用模板欄位元件或 rendering function。
+
+例如概念：
+
+AirportTransferTemplateFields
+
+接受：
+
+value
+onChange
+disabled
+
+實際命名依專案風格。
+
+新增頁與編輯頁必須使用同一套模板 UI。
+
+────────────────────────
+
+九、新增流程
+
+建立 Reminder：
+
+標題：
+CI836 接機
+
+工作：
+A 車行
+
+因為 A 車行：
+
+templateType = airport_transfer
+
+顯示模板欄位。
+
+輸入：
+
+接送類型：接機
+出發地：桃園機場
+目的地：台北市信義區
+航班：CI836
+乘客：王先生
+電話：0912...
+人數：2
+行李：2 大 1 小
+
+儲存後：
+
+Reminder 正常建立。
+
+workProfileId 正確。
+
+templateData 正確保存。
+
+重新整理後資料仍存在。
+
+────────────────────────
+
+十、編輯流程
+
+進入上述 Reminder。
+
+必須正確載入：
+
+A 車行
+機場接送模板資料
+
+修改：
+
+目的地
+乘客人數
+航班
+行李
+
+儲存後：
+
+修改同一 Reminder。
+
+Reminder id 不變。
+
+workProfileId 不變。
+
+Finance Record 不受影響。
+
+Financial Item 不受影響。
+
+────────────────────────
+
+十一、切換 WorkProfile 的安全規則
+
+這部分必須小心。
+
+例如 Reminder 原本：
+
+A 車行
+templateType = airport_transfer
+
+已經填寫機場接送模板資料。
+
+使用者切換：
+
+個人接案
+templateType = general_work
+
+不要立即刪除 airportTransfer templateData。
+
+先顯示確認：
+
+切換工作後，目前的機場接送資料將不再顯示。
+
+是否繼續？
+
+[ 繼續 ] [ 取消 ]
+
+V1 建議：
+
+切換後保留舊 templateData，
+但 UI 不顯示。
+
+原因：
+
+避免誤操作造成資料永久遺失。
+
+如果之後重新切回 airport_transfer WorkProfile，
+原模板資料可以重新顯示。
+
+不要自動清空 Template Data。
+
+────────────────────────
+
+十二、多個相同模板 WorkProfile
+
+測試：
+
+A 車行
+templateType = airport_transfer
+
+B 車行
+templateType = airport_transfer
+
+Reminder 從：
+
+A 車行
+
+切換成：
+
+B 車行
+
+因 templateType 相同：
+
+保留目前 airportTransfer templateData。
+
+只更新：
+
+workProfileId
+
+不要清空航班、乘客、路線資料。
+
+────────────────────────
+
+十三、舊 AirportTransfer Type 相容
+
+目前專案已有舊：
+
+type = AirportTransfer
+
+本次：
+
+不要刪除。
+不要 migration。
+不要自動轉成 WorkProfile。
+不要自動建立工作資料板。
+不要改寫舊 Reminder。
+
+舊 AirportTransfer 繼續使用現有相容流程。
+
+新工作模板流程只適用於：
+
+Reminder 有 workProfileId
+且該 WorkProfile.templateType = airport_transfer
+
+後續再另做安全遷移 Task。
+
+────────────────────────
+
+十四、手機版 UI
+
+請以手機寬度測試。
+
+要求：
+
+接送類型按鈕可清楚操作。
+
+建議手機：
+
+[ 接機 ] [ 送機 ]
+[ 單程 ] [ 包車 ]
+
+不要四個按鈕硬擠成很小。
+
+路線顯示清楚：
+
+出發地
+↓
+停靠點
+↓
+目的地
+
+乘客人數 +/- 按鈕容易點擊。
+
+電話 input 不超出畫面。
+
+Template 區塊與收支區塊有清楚區隔。
+
+不要產生水平捲動。
+
+不要被 Bottom Navigation 遮住。
+
+────────────────────────
+
+十五、測試案例
+
+測試 1：
+
+A 車行
+模板：機場接送
+
+新增 Reminder。
+
+預期：
+顯示機場接送資料區。
+
+────────────────
+
+測試 2：
+
+個人接案
+模板：一般工作
+
+新增 Reminder。
+
+預期：
+不顯示機場接送資料。
+
+────────────────
+
+測試 3：
+
+A 車行建立：
+
+CI836
+桃園機場
+台北
+王先生
+2 人
+
+儲存並重新整理。
+
+預期：
+全部資料正確保存。
+
+────────────────
+
+測試 4：
+
+進入編輯修改：
+
+2 人 → 3 人
+
+預期：
+同一 Reminder 更新。
+
+id 不變。
+
+────────────────
+
+測試 5：
+
+A 車行切換到 B 車行。
+
+兩者都是 airport_transfer。
+
+預期：
+模板資料保留。
+
+只改 workProfileId。
+
+────────────────
+
+測試 6：
+
+A 車行切換到一般工作模板。
+
+預期：
+顯示確認提示。
+
+確認後：
+
+機場接送 UI 隱藏。
+
+原 templateData 不立即刪除。
+
+────────────────
+
+測試 7：
+
+機場接送 Reminder 新增：
+
+待收 1200
+
+預期：
+
+Template Data 不保存 amount。
+
+收支區只有一筆待收 1200。
+
+────────────────
+
+測試 8：
+
+舊 AirportTransfer Reminder。
+
+預期：
+
+仍可正常開啟與編輯。
+
+不因本次 Task 損壞。
+
+────────────────────────
+
+十六、本次禁止
+
+不要修改 AI Parser。
+不要修改 Groq API。
+不要修改 /api/parse。
+不要刪除 AirportTransfer Type。
+不要 migration 舊 AirportTransfer。
+不要修改 Finance Store。
+不要修改 FinancialItem 結構。
+不要建立第二套收支系統。
+不要建立司機 Store。
+不要建立車輛 Store。
+不要建立派單公司功能。
+不要建立電子派車單。
+不要建立 PDF。
+不要建立 AI 自動工作判斷。
+不要清除 LocalStorage。
+不要大幅重構 App.tsx。
+不要自動開始下一個 Task。
+
+────────────────────────
+
+完成後請使用繁體中文回報：
+
+1. Template Data 使用什麼資料結構。
+2. 如何從 WorkProfile.templateType 決定模板 UI。
+3. 機場接送 V1 有哪些欄位。
+4. 新增與編輯是否共用同一模板元件。
+5. 中途停靠點如何保存。
+6. 收支是否仍使用原統一系統。
+7. 是否避免 amount 重複保存。
+8. 切換不同模板如何保護資料。
+9. 相同模板的 WorkProfile 切換是否保留資料。
+10. 舊 AirportTransfer 是否正常相容。
+11. 八個測試案例結果。
+12. 手機版測試結果。
+13. TypeScript 是否通過。
+
+完成後停止，不要自動開始下一個 Task。

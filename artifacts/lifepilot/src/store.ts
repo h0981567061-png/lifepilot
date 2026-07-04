@@ -93,6 +93,26 @@ export interface Reminder {
   financialItems?: FinancialItem[];
   // Work profile association (optional — old reminders without this field work normally)
   workProfileId?: string;
+  // Template data — stores per-trip data for WorkProfile-based templates
+  templateData?: TemplateData;
+}
+
+// ─── Template Data ─────────────────────────────────────────────────────────────
+
+export interface AirportTransferTemplateData {
+  transferType?: "pickup" | "dropoff" | "charter" | "one_way";
+  pickupLocation?: string;
+  stops?: string[];
+  destination?: string;
+  flightNumber?: string;
+  passengerName?: string;
+  passengerPhone?: string;
+  passengerCount?: number;
+  luggage?: string;
+}
+
+export interface TemplateData {
+  airportTransfer?: AirportTransferTemplateData;
 }
 
 // ─── Financial Item ───────────────────────────────────────────────────────────

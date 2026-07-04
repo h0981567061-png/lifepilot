@@ -1133,6 +1133,7 @@ export default function App() {
       financialDueDate: item.financialDueDate || undefined,
       financialItems: item.financialItems?.length ? item.financialItems : undefined,
       workProfileId: item.workProfileId || undefined,
+      templateData: item.templateData ?? undefined,
     }));
   }
 

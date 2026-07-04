@@ -1,6 +1,8 @@
-import { useState } from "react";
-import type { Reminder, ReminderNotification, FinancialItem } from "../store";
+import { useState, useMemo } from "react";
+import type { Reminder, ReminderNotification, FinancialItem, TemplateData } from "../store";
 import { updateReminder } from "../store";
+import { getWorkProfiles } from "../workProfileStore";
+import { AirportTransferTemplateFields } from "../components/AirportTransferTemplateFields";
 import { normalizeDate } from "../utils";
 import { TYPE_LABEL, type AllType } from "../previewTypes";
 import { ReminderEditor } from "../components/ReminderEditor";
@@ -559,6 +561,28 @@ export function EditPage({
   const [notes,     setNotes]     = useState(reminder.notes ?? "");
   const [category,     setCategory]     = useState(reminder.category ?? "");
   const [workProfileId, setWorkProfileId] = useState<string | undefined>(reminder.workProfileId);
+  const [templateData, setTemplateData]   = useState<TemplateData | undefined>(reminder.templateData);
+
+  // ── WorkProfile switch protection ──────────────────────────────────────────
+  const allProfiles = useMemo(() => getWorkProfiles(), []);
+  const [pendingWPSwitch, setPendingWPSwitch] = useState<{ newId: string | undefined } | null>(null);
+
+  const currentWP = allProfiles.find((p) => p.id === workProfileId);
+  const isAirportTemplate = currentWP?.templateType === "airport_transfer";
+
+  function handleWorkProfileChange(newId: string | undefined) {
+    const oldProfile = allProfiles.find((p) => p.id === workProfileId);
+    const newProfile = allProfiles.find((p) => p.id === newId);
+    const wasAirport = oldProfile?.templateType === "airport_transfer";
+    const willBeAirport = newProfile?.templateType === "airport_transfer";
+
+    // Only confirm when leaving airport template AND there's data worth protecting
+    if (wasAirport && !willBeAirport && templateData?.airportTransfer) {
+      setPendingWPSwitch({ newId });
+      return;
+    }
+    setWorkProfileId(newId);
+  }
 
   // ── Type-specific ──────────────────────────────────────────────────────────
   const [flightNumber,  setFlightNumber]  = useState(reminder.flightNumber ?? "");
@@ -826,6 +850,7 @@ export function EditPage({
       allDay:    timeMode === "allday",
       location, notes, category,
       workProfileId: workProfileId || undefined,
+      templateData: templateData ?? undefined,
       flightNumber, transferType, district, vehicleType, price,
       shoppingItems,
       amount: savedAmount,
@@ -922,10 +947,54 @@ export function EditPage({
         <FieldRow label="工作">
           <WorkProfileSelect
             value={workProfileId}
-            onChange={setWorkProfileId}
+            onChange={handleWorkProfileChange}
             currentProfileId={reminder.workProfileId}
           />
         </FieldRow>
+      )}
+
+      {/* WorkProfile template-switch confirmation */}
+      {pendingWPSwitch && !isPending && (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-3">
+          <p className="text-xs text-gray-300 leading-relaxed">
+            切換工作後，目前的機場接送資料將不再顯示。
+          </p>
+          <p className="text-[11px] text-gray-500">（資料不會刪除，重新選回相同類型時可再次顯示）</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setWorkProfileId(pendingWPSwitch.newId);
+                setPendingWPSwitch(null);
+              }}
+              className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 transition-colors"
+            >
+              繼續切換
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingWPSwitch(null)}
+              className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-gray-300 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Airport transfer template (shown when linked WorkProfile is airport_transfer) */}
+      {isAirportTemplate && !isPending && !pendingWPSwitch && (
+        <>
+          <SectionLabel>機場接送資料</SectionLabel>
+          <div className="px-1 pb-1">
+            <AirportTransferTemplateFields
+              value={templateData?.airportTransfer ?? {}}
+              onChange={(atd) =>
+                setTemplateData((prev) => ({ ...prev, airportTransfer: atd }))
+              }
+            />
+          </div>
+        </>
       )}
 
       {/* ══ 2. Type-specific ══════════════════════════════════════════════════ */}
