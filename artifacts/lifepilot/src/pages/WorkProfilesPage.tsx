@@ -1,9 +1,15 @@
 // ─── WorkProfilesPage ─────────────────────────────────────────────────────────
+//
+// Unified single-page add/edit flow.
+// Work name + template-specific fields + custom fields + enabled toggle
+// are all edited in one form. No separate "profile data" sub-page.
 
 import { useState, useEffect } from "react";
 import {
   type WorkProfile,
   type WorkProfileData,
+  type WorkTemplateType,
+  type CustomField,
   getWorkProfiles,
   createWorkProfile,
   updateWorkProfile,
@@ -35,97 +41,341 @@ function TextInput({
   );
 }
 
-// ─── WorkProfile Form ─────────────────────────────────────────────────────────
-// templateType is intentionally NOT in FormState — new profiles default to
-// "general_work"; existing profiles preserve their templateType on edit.
+// ─── ToggleSwitch helper ─────────────────────────────────────────────────────
 
-interface FormState {
+function ToggleSwitch({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
+        checked ? "bg-blue-600" : "bg-white/10"
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${
+          checked ? "translate-x-6" : "translate-x-0.5"
+        }`}
+      />
+    </button>
+  );
+}
+
+// ─── Divider ─────────────────────────────────────────────────────────────────
+
+function SectionDivider() {
+  return <div className="h-px bg-white/5" />;
+}
+
+// ─── CustomFieldBlock ─────────────────────────────────────────────────────────
+// One custom-field row: label input + value input + delete button.
+
+function CustomFieldBlock({
+  field,
+  onChange,
+  onDelete,
+}: {
+  field: CustomField;
+  onChange: (patch: Partial<CustomField>) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5 space-y-2.5">
+      <div>
+        <label className="block text-xs text-gray-500 mb-1 font-medium">
+          欄位名稱
+        </label>
+        <TextInput
+          value={field.label}
+          onChange={(v) => onChange({ label: v })}
+          placeholder=""
+        />
+      </div>
+      <div>
+        <label className="block text-xs text-gray-500 mb-1 font-medium">
+          內容
+        </label>
+        <TextInput
+          value={field.value}
+          onChange={(v) => onChange({ value: v })}
+          placeholder=""
+        />
+      </div>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="text-xs text-rose-400 hover:text-rose-300 transition-colors pt-0.5"
+      >
+        刪除此欄位
+      </button>
+    </div>
+  );
+}
+
+// ─── WorkProfileEditForm ───────────────────────────────────────────────────────
+// Shared by both "add" and "edit". Renders name, template-specific fields,
+// custom fields, and the enabled toggle in one page.
+
+interface SavePayload {
   name: string;
-  note: string;
+  templateType: WorkTemplateType;
   enabled: boolean;
+  note: string;
+  profileData: WorkProfileData;
 }
 
-const EMPTY_FORM: FormState = {
-  name: "",
-  note: "",
-  enabled: true,
-};
-
-function profileToForm(p: WorkProfile): FormState {
-  return {
-    name: p.name,
-    note: p.note,
-    enabled: p.enabled,
-  };
-}
-
-interface WorkProfileFormProps {
-  initial?: FormState;
-  onSave: (form: FormState) => void;
+interface WorkProfileEditFormProps {
+  initialProfile?: WorkProfile;
+  onSave: (payload: SavePayload) => void;
   onCancel: () => void;
-  saveLabel?: string;
+  saveLabel: string;
 }
 
-function WorkProfileForm({
-  initial = EMPTY_FORM,
+function WorkProfileEditForm({
+  initialProfile,
   onSave,
   onCancel,
-  saveLabel = "儲存",
-}: WorkProfileFormProps) {
-  const [form, setForm] = useState<FormState>(initial);
-  const upd = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }));
+  saveLabel,
+}: WorkProfileEditFormProps) {
+  const isNew = !initialProfile;
+  const templateType: WorkTemplateType =
+    initialProfile?.templateType ?? "general_work";
+  const isAirport = templateType === "airport_transfer";
 
-  const canSave = form.name.trim().length > 0;
+  const [name, setName] = useState(initialProfile?.name ?? "");
+  const [profileData, setProfileData] = useState<WorkProfileData>(
+    initialProfile?.profileData ?? {}
+  );
+  const [customFields, setCustomFields] = useState<CustomField[]>(
+    initialProfile?.profileData?.customFields ?? []
+  );
+  const [enabled, setEnabled] = useState(initialProfile?.enabled ?? true);
+
+  const updData = (patch: Partial<WorkProfileData>) =>
+    setProfileData((d) => ({ ...d, ...patch }));
+
+  // ── custom-field ops ──
+  const addCF = () =>
+    setCustomFields((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), label: "", value: "" },
+    ]);
+
+  const updCF = (id: string, patch: Partial<CustomField>) =>
+    setCustomFields((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, ...patch } : f))
+    );
+
+  const delCF = (id: string) =>
+    setCustomFields((prev) => prev.filter((f) => f.id !== id));
+
+  const canSave = name.trim().length > 0;
+
+  const handleSave = () => {
+    const mergedData: WorkProfileData = {
+      ...profileData,
+      customFields: customFields.length > 0 ? customFields : undefined,
+    };
+    onSave({
+      name: name.trim(),
+      templateType,
+      enabled,
+      note: initialProfile?.note ?? "",
+      profileData: mergedData,
+    });
+  };
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-4">
-      {/* 工作名稱 */}
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-5">
+      {/* ── 1. Name ── */}
       <div>
-        <label className="block text-xs text-gray-500 mb-1.5 font-medium">工作名稱</label>
+        <label className="block text-xs text-gray-500 mb-1.5 font-medium">
+          工作名稱
+        </label>
         <TextInput
-          value={form.name}
-          onChange={(v) => upd({ name: v })}
-          placeholder="例如：機場接送"
+          value={name}
+          onChange={setName}
+          placeholder="輸入工作名稱"
         />
       </div>
 
-      {/* 備註 */}
-      <div>
-        <label className="block text-xs text-gray-500 mb-1.5 font-medium">備註（選填）</label>
-        <TextInput
-          value={form.note}
-          onChange={(v) => upd({ note: v })}
-          placeholder="備註"
-        />
-      </div>
+      <SectionDivider />
 
-      {/* 啟用 */}
-      <div className="flex items-center justify-between py-1">
-        <div>
-          <p className="text-sm text-white font-medium">啟用此工作</p>
-          <p className="text-xs text-gray-500 mt-0.5">停用後仍保留工作資料</p>
+      {/* ── 2. Template-specific fields ── */}
+      {isAirport ? (
+        <div className="space-y-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            基本資料
+          </p>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
+              姓名
+            </label>
+            <TextInput
+              value={profileData.driverName ?? ""}
+              onChange={(v) => updData({ driverName: v })}
+              placeholder=""
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
+              電話
+            </label>
+            <TextInput
+              type="tel"
+              value={profileData.driverPhone ?? ""}
+              onChange={(v) => updData({ driverPhone: v })}
+              placeholder=""
+            />
+          </div>
+
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider pt-1">
+            車輛資料
+          </p>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
+              車牌
+            </label>
+            <TextInput
+              value={profileData.vehiclePlate ?? ""}
+              onChange={(v) => updData({ vehiclePlate: v })}
+              placeholder=""
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
+              車型
+            </label>
+            <TextInput
+              value={profileData.vehicleModel ?? ""}
+              onChange={(v) => updData({ vehicleModel: v })}
+              placeholder=""
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
+              座位數
+            </label>
+            <TextInput
+              value={profileData.vehicleSeats ?? ""}
+              onChange={(v) => updData({ vehicleSeats: v })}
+              placeholder=""
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
+              靠行公司
+            </label>
+            <TextInput
+              value={profileData.companyName ?? ""}
+              onChange={(v) => updData({ companyName: v })}
+              placeholder=""
+            />
+          </div>
         </div>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
+              公司／單位
+            </label>
+            <TextInput
+              value={profileData.companyName ?? ""}
+              onChange={(v) => updData({ companyName: v })}
+              placeholder=""
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
+              職稱／工作角色
+            </label>
+            <TextInput
+              value={profileData.jobRole ?? ""}
+              onChange={(v) => updData({ jobRole: v })}
+              placeholder=""
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
+              工作地點
+            </label>
+            <TextInput
+              value={profileData.workLocation ?? ""}
+              onChange={(v) => updData({ workLocation: v })}
+              placeholder=""
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
+              聯絡人
+            </label>
+            <TextInput
+              value={profileData.contactName ?? ""}
+              onChange={(v) => updData({ contactName: v })}
+              placeholder=""
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5 font-medium">
+              聯絡電話
+            </label>
+            <TextInput
+              type="tel"
+              value={profileData.contactPhone ?? ""}
+              onChange={(v) => updData({ contactPhone: v })}
+              placeholder=""
+            />
+          </div>
+        </div>
+      )}
+
+      <SectionDivider />
+
+      {/* ── 3. Custom fields ── */}
+      <div className="space-y-3">
+        {customFields.map((cf) => (
+          <CustomFieldBlock
+            key={cf.id}
+            field={cf}
+            onChange={(patch) => updCF(cf.id, patch)}
+            onDelete={() => delCF(cf.id)}
+          />
+        ))}
         <button
           type="button"
-          onClick={() => upd({ enabled: !form.enabled })}
-          className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
-            form.enabled ? "bg-blue-600" : "bg-white/10"
-          }`}
+          onClick={addCF}
+          className="w-full py-3 rounded-xl border border-dashed border-white/15 text-sm font-medium text-gray-400 hover:text-white hover:border-white/30 transition-colors flex items-center justify-center gap-2"
         >
-          <span
-            className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${
-              form.enabled ? "translate-x-6" : "translate-x-0.5"
-            }`}
-          />
+          <span className="text-base leading-none">＋</span>
+          新增自訂欄位
         </button>
       </div>
 
-      {/* Buttons */}
+      <SectionDivider />
+
+      {/* ── 4. Enabled toggle (always AFTER all data fields) ── */}
+      <div className="flex items-center justify-between py-1">
+        <div>
+          <p className="text-sm text-white font-medium">啟用此工作</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            停用後仍保留工作與相關資料
+          </p>
+        </div>
+        <ToggleSwitch checked={enabled} onChange={() => setEnabled(!enabled)} />
+      </div>
+
+      {/* ── 5. Buttons ── */}
       <div className="flex gap-2 pt-1">
         <button
           type="button"
           disabled={!canSave}
-          onClick={() => canSave && onSave(form)}
+          onClick={() => canSave && handleSave()}
           className="flex-1 py-3 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {saveLabel}
@@ -148,10 +398,9 @@ interface WorkCardProps {
   profile: WorkProfile;
   onEdit: () => void;
   onDelete: () => void;
-  onProfileData: () => void;
 }
 
-function WorkCard({ profile, onEdit, onDelete, onProfileData }: WorkCardProps) {
+function WorkCard({ profile, onEdit, onDelete }: WorkCardProps) {
   return (
     <div
       className={`rounded-2xl border px-5 py-4 transition-colors ${
@@ -177,22 +426,15 @@ function WorkCard({ profile, onEdit, onDelete, onProfileData }: WorkCardProps) {
             )}
           </div>
           {profile.note && (
-            <p className="text-xs text-gray-600 mt-1 line-clamp-2">{profile.note}</p>
+            <p className="text-xs text-gray-600 mt-1 line-clamp-2">
+              {profile.note}
+            </p>
           )}
         </div>
       </div>
 
-      {/* Action buttons */}
+      {/* Actions */}
       <div className="flex gap-2 mt-4">
-        {profile.enabled && (
-          <button
-            type="button"
-            onClick={onProfileData}
-            className="flex-1 py-2.5 rounded-xl text-sm font-medium text-blue-300 bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 transition-colors"
-          >
-            工作資料
-          </button>
-        )}
         <button
           type="button"
           onClick={onEdit}
@@ -206,109 +448,6 @@ function WorkCard({ profile, onEdit, onDelete, onProfileData }: WorkCardProps) {
           className="flex-1 py-2.5 rounded-xl text-sm font-medium text-rose-400 bg-rose-500/5 border border-rose-500/15 hover:bg-rose-500/10 transition-colors"
         >
           刪除
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── WorkProfile Data Form ─────────────────────────────────────────────────────
-// Long-term driver & vehicle info — separate from per-trip Reminder data.
-
-function WorkProfileDataForm({
-  profile,
-  onSave,
-  onCancel,
-}: {
-  profile: WorkProfile;
-  onSave: (data: WorkProfileData) => void;
-  onCancel: () => void;
-}) {
-  const [form, setForm] = useState<WorkProfileData>(profile.profileData ?? {});
-  const upd = (patch: Partial<WorkProfileData>) => setForm((f) => ({ ...f, ...patch }));
-
-  return (
-    <div className="space-y-5">
-      {/* 基本資料 */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-4">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">基本資料</p>
-
-        <div>
-          <label className="block text-xs text-gray-500 mb-1.5 font-medium">姓名</label>
-          <TextInput
-            value={form.driverName ?? ""}
-            onChange={(v) => upd({ driverName: v })}
-            placeholder="您的姓名"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs text-gray-500 mb-1.5 font-medium">電話</label>
-          <TextInput
-            type="tel"
-            value={form.driverPhone ?? ""}
-            onChange={(v) => upd({ driverPhone: v })}
-            placeholder="聯絡電話"
-          />
-        </div>
-      </div>
-
-      {/* 車輛資料 */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-4">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">車輛資料</p>
-
-        <div>
-          <label className="block text-xs text-gray-500 mb-1.5 font-medium">車牌</label>
-          <TextInput
-            value={form.vehiclePlate ?? ""}
-            onChange={(v) => upd({ vehiclePlate: v })}
-            placeholder="例如 RFH-7077"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs text-gray-500 mb-1.5 font-medium">車型</label>
-          <TextInput
-            value={form.vehicleModel ?? ""}
-            onChange={(v) => upd({ vehicleModel: v })}
-            placeholder="例如 CRV、Alphard"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs text-gray-500 mb-1.5 font-medium">座位數</label>
-          <TextInput
-            value={form.vehicleSeats ?? ""}
-            onChange={(v) => upd({ vehicleSeats: v })}
-            placeholder="例如 5"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs text-gray-500 mb-1.5 font-medium">靠行公司（選填）</label>
-          <TextInput
-            value={form.companyName ?? ""}
-            onChange={(v) => upd({ companyName: v })}
-            placeholder="靠行公司名稱"
-          />
-        </div>
-      </div>
-
-      {/* Buttons */}
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => onSave(form)}
-          className="flex-1 py-3 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors"
-        >
-          儲存
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex-1 py-3 rounded-xl text-sm font-semibold text-gray-300 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
-        >
-          取消
         </button>
       </div>
     </div>
@@ -397,8 +536,7 @@ type UIMode =
   | { kind: "adding" }
   | { kind: "editing"; id: string }
   | { kind: "deleting"; id: string }
-  | { kind: "block_delete"; id: string; linkedCount: number }
-  | { kind: "profile_data"; id: string };
+  | { kind: "block_delete"; id: string; linkedCount: number };
 
 interface Props {
   onClose: () => void;
@@ -415,26 +553,12 @@ export function WorkProfilesPage({ onClose, savedReminders }: Props) {
     refresh();
   }, []);
 
-  function handleAdd(form: FormState) {
-    createWorkProfile({
-      name: form.name.trim(),
-      templateType: "general_work",
-      note: form.note.trim(),
-      enabled: form.enabled,
-    });
-    refresh();
-    setMode({ kind: "list" });
-  }
-
-  function handleEdit(id: string, form: FormState) {
-    const existing = profiles.find((p) => p.id === id);
-    updateWorkProfile(id, {
-      name: form.name.trim(),
-      // Preserve existing templateType — do not overwrite with UI-less default
-      templateType: existing?.templateType ?? "general_work",
-      note: form.note.trim(),
-      enabled: form.enabled,
-    });
+  function handleSave(payload: SavePayload) {
+    if (mode.kind === "editing") {
+      updateWorkProfile(mode.id, payload);
+    } else {
+      createWorkProfile(payload);
+    }
     refresh();
     setMode({ kind: "list" });
   }
@@ -454,19 +578,12 @@ export function WorkProfilesPage({ onClose, savedReminders }: Props) {
     }
   }
 
-  function handleSaveProfileData(id: string, data: WorkProfileData) {
-    updateWorkProfile(id, { profileData: data });
-    refresh();
-    setMode({ kind: "list" });
-  }
-
-  // Derive header context for profile_data sub-page
-  const profileDataProfile =
-    mode.kind === "profile_data"
+  const editingProfile =
+    mode.kind === "editing"
       ? profiles.find((p) => p.id === mode.id)
       : undefined;
 
-  const isProfileDataMode = mode.kind === "profile_data";
+  const isFormMode = mode.kind === "adding" || mode.kind === "editing";
 
   return (
     <div className="min-h-screen bg-gray-950 pb-24">
@@ -474,7 +591,7 @@ export function WorkProfilesPage({ onClose, savedReminders }: Props) {
       <div className="sticky top-0 z-10 bg-gray-950/95 backdrop-blur border-b border-white/5 px-5 py-4 flex items-center gap-4">
         <button
           type="button"
-          onClick={isProfileDataMode ? () => setMode({ kind: "list" }) : onClose}
+          onClick={isFormMode ? () => setMode({ kind: "list" }) : onClose}
           className="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1.5 shrink-0"
         >
           <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
@@ -489,116 +606,94 @@ export function WorkProfilesPage({ onClose, savedReminders }: Props) {
           返回
         </button>
         <h1 className="text-base font-semibold text-white">
-          {isProfileDataMode && profileDataProfile
-            ? `${profileDataProfile.name} — 工作資料`
+          {mode.kind === "adding"
+            ? "新增工作"
+            : mode.kind === "editing" && editingProfile
+            ? `編輯工作 — ${editingProfile.name}`
             : "我的工作"}
         </h1>
       </div>
 
       <div className="max-w-2xl mx-auto px-5 pt-6 space-y-4">
-
-        {/* ── Profile data sub-page ── */}
-        {isProfileDataMode && profileDataProfile && (
-          <WorkProfileDataForm
-            profile={profileDataProfile}
-            onSave={(data) => handleSaveProfileData(profileDataProfile.id, data)}
+        {/* Adding / Editing form */}
+        {isFormMode && (
+          <WorkProfileEditForm
+            initialProfile={editingProfile}
+            onSave={handleSave}
             onCancel={() => setMode({ kind: "list" })}
+            saveLabel={mode.kind === "adding" ? "新增" : "儲存"}
           />
         )}
 
-        {/* ── List mode ── */}
-        {!isProfileDataMode && (
-          <>
-            {/* Adding form */}
-            {mode.kind === "adding" && (
-              <div>
-                <p className="text-xs text-gray-500 font-medium mb-3">新增工作</p>
-                <WorkProfileForm
-                  onSave={handleAdd}
-                  onCancel={() => setMode({ kind: "list" })}
-                  saveLabel="新增"
-                />
-              </div>
-            )}
+        {/* Profile list */}
+        {mode.kind === "list" && profiles.length === 0 && (
+          <div className="text-center py-16">
+            <p className="text-4xl mb-3">💼</p>
+            <p className="text-gray-500 text-sm">尚未建立任何工作資料板</p>
+            <p className="text-gray-600 text-xs mt-1">點擊下方按鈕新增第一個工作</p>
+          </div>
+        )}
 
-            {/* Profile list */}
-            {profiles.length === 0 && mode.kind !== "adding" && (
-              <div className="text-center py-16">
-                <p className="text-4xl mb-3">💼</p>
-                <p className="text-gray-500 text-sm">尚未建立任何工作資料板</p>
-                <p className="text-gray-600 text-xs mt-1">點擊下方按鈕新增第一個工作</p>
-              </div>
-            )}
+        {mode.kind === "list" &&
+          profiles.map((profile) => {
+            return (
+              <WorkCard
+                key={profile.id}
+                profile={profile}
+                onEdit={() => setMode({ kind: "editing", id: profile.id })}
+                onDelete={() => handleRequestDelete(profile.id)}
+              />
+            );
+          })}
 
-            {profiles.map((profile) => {
-              if (mode.kind === "editing" && mode.id === profile.id) {
-                return (
-                  <div key={profile.id}>
-                    <p className="text-xs text-gray-500 font-medium mb-3">編輯工作</p>
-                    <WorkProfileForm
-                      initial={profileToForm(profile)}
-                      onSave={(form) => handleEdit(profile.id, form)}
-                      onCancel={() => setMode({ kind: "list" })}
-                      saveLabel="儲存"
-                    />
-                  </div>
-                );
-              }
+        {/* Delete / Block delete overlays (replace the card in-place) */}
+        {mode.kind === "deleting" && (
+          (() => {
+            const p = profiles.find((pr) => pr.id === mode.id);
+            return p ? (
+              <DeleteConfirm
+                key={p.id}
+                profile={p}
+                onConfirm={() => handleDelete(p.id)}
+                onCancel={() => setMode({ kind: "list" })}
+              />
+            ) : null;
+          })()
+        )}
 
-              if (mode.kind === "deleting" && mode.id === profile.id) {
-                return (
-                  <DeleteConfirm
-                    key={profile.id}
-                    profile={profile}
-                    onConfirm={() => handleDelete(profile.id)}
-                    onCancel={() => setMode({ kind: "list" })}
-                  />
-                );
-              }
+        {mode.kind === "block_delete" && (
+          (() => {
+            const p = profiles.find((pr) => pr.id === mode.id);
+            return p ? (
+              <DeleteBlocked
+                key={p.id}
+                profile={p}
+                linkedCount={mode.linkedCount}
+                onClose={() => setMode({ kind: "list" })}
+              />
+            ) : null;
+          })()
+        )}
 
-              if (mode.kind === "block_delete" && mode.id === profile.id) {
-                return (
-                  <DeleteBlocked
-                    key={profile.id}
-                    profile={profile}
-                    linkedCount={mode.linkedCount}
-                    onClose={() => setMode({ kind: "list" })}
-                  />
-                );
-              }
+        {/* Add button */}
+        {mode.kind === "list" && (
+          <button
+            type="button"
+            onClick={() => setMode({ kind: "adding" })}
+            className="w-full py-4 rounded-2xl border border-dashed border-white/15 text-sm font-medium text-gray-400 hover:text-white hover:border-white/30 transition-colors flex items-center justify-center gap-2"
+          >
+            <span className="text-base leading-none">＋</span>
+            新增工作
+          </button>
+        )}
 
-              return (
-                <WorkCard
-                  key={profile.id}
-                  profile={profile}
-                  onEdit={() => setMode({ kind: "editing", id: profile.id })}
-                  onDelete={() => handleRequestDelete(profile.id)}
-                  onProfileData={() => setMode({ kind: "profile_data", id: profile.id })}
-                />
-              );
-            })}
-
-            {/* Add button */}
-            {mode.kind === "list" && (
-              <button
-                type="button"
-                onClick={() => setMode({ kind: "adding" })}
-                className="w-full py-4 rounded-2xl border border-dashed border-white/15 text-sm font-medium text-gray-400 hover:text-white hover:border-white/30 transition-colors flex items-center justify-center gap-2"
-              >
-                <span className="text-base leading-none">＋</span>
-                新增工作
-              </button>
-            )}
-
-            {/* Stats footer */}
-            {profiles.length > 0 && mode.kind === "list" && (
-              <p className="text-xs text-gray-700 text-center pt-2">
-                共 {profiles.length} 個工作資料板
-                {profiles.filter((p) => !p.enabled).length > 0 &&
-                  `，${profiles.filter((p) => !p.enabled).length} 個已停用`}
-              </p>
-            )}
-          </>
+        {/* Stats footer */}
+        {mode.kind === "list" && profiles.length > 0 && (
+          <p className="text-xs text-gray-700 text-center pt-2">
+            共 {profiles.length} 個工作資料板
+            {profiles.filter((p) => !p.enabled).length > 0 &&
+              `，${profiles.filter((p) => !p.enabled).length} 個已停用`}
+          </p>
         )}
       </div>
     </div>

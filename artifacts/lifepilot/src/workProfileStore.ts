@@ -6,15 +6,36 @@
 
 export type WorkTemplateType = "general_work" | "airport_transfer";
 
-// Long-term personal/vehicle data attached to a WorkProfile.
-// NOT per-trip data (flights, passengers, routes → stored on Reminder.templateData).
+// Custom field — available on ALL work types.
+export interface CustomField {
+  id: string;
+  label: string;
+  value: string;
+}
+
+// Long-term work data attached to a WorkProfile.
+// NOT per-trip data (dates, flights, passengers → stored on Reminder.templateData).
+//
+// Fields are shared across work types to keep a single flat structure.
+// UI decides which fields to show based on templateType.
 export interface WorkProfileData {
-  driverName?: string;
-  driverPhone?: string;
-  vehiclePlate?: string;
-  vehicleModel?: string;
-  vehicleSeats?: string;
-  companyName?: string;
+  // ── General work ──
+  companyName?: string;   // 公司／單位
+  jobRole?: string;         // 職稱／工作角色
+  workLocation?: string;    // 工作地點
+  contactName?: string;     // 聯絡人
+  contactPhone?: string;    // 聯絡電話
+
+  // ── Airport transfer ──
+  driverName?: string;      // 姓名
+  driverPhone?: string;     // 電話
+  vehiclePlate?: string;    // 車牌
+  vehicleModel?: string;    // 車型
+  vehicleSeats?: string;    // 座位數
+  // companyName reused as 靠行公司 for airport_transfer
+
+  // ── Shared ──
+  customFields?: CustomField[];
 }
 
 export interface WorkProfile {
@@ -22,21 +43,17 @@ export interface WorkProfile {
   name: string;
   templateType: WorkTemplateType;
   enabled: boolean;
-  note: string;
+  note: string;             // legacy — kept for backward compat; no longer shown in UI
   profileData?: WorkProfileData;
   createdAt: string;
   updatedAt: string;
 }
 
+// Kept for backward compat; no longer shown in UI.
 export const WORK_TEMPLATE_LABELS: Record<WorkTemplateType, string> = {
   general_work:    "一般工作",
   airport_transfer: "機場接送",
 };
-
-export const ALL_WORK_TEMPLATES: WorkTemplateType[] = [
-  "general_work",
-  "airport_transfer",
-];
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 
