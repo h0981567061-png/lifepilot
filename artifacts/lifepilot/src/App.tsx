@@ -1132,6 +1132,7 @@ export default function App() {
       expectedAmount: item.expectedAmount,
       financialDueDate: item.financialDueDate || undefined,
       financialItems: item.financialItems?.length ? item.financialItems : undefined,
+      workProfileId: item.workProfileId || undefined,
     }));
   }
 
@@ -1424,7 +1425,10 @@ export default function App() {
       )}
       {showWorkProfiles && (
         <div className="fixed inset-0 bg-gray-950 z-40 overflow-y-auto">
-          <WorkProfilesPage onClose={() => setShowWorkProfiles(false)} />
+          <WorkProfilesPage
+            onClose={() => setShowWorkProfiles(false)}
+            savedReminders={savedReminders}
+          />
         </div>
       )}
       </main>

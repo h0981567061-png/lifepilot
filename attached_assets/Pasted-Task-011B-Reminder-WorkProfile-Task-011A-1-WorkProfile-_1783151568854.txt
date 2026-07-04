@@ -1,0 +1,383 @@
+Task-011B：建立 Reminder 與 WorkProfile 的基礎關聯
+
+目前已完成 Task-011A：
+
+1. WorkProfile 資料模型
+2. WorkProfile Store
+3. 我的 → 工作資料板入口
+4. 工作資料板新增、編輯、刪除
+5. 支援多個 WorkProfile
+6. templateType：
+   - general_work
+   - airport_transfer
+
+本次目標：
+
+讓 Reminder 可以選擇並關聯一個 WorkProfile。
+
+本次只建立關聯。
+
+不要建立機場接送模板欄位。
+不要修改 AirportTransfer 現有資料。
+不要修改 AI Parser。
+不要修改 Groq API。
+不要修改 Finance Store。
+不要進行舊資料 migration。
+
+────────────────────────
+
+一、Reminder 增加可選關聯欄位
+
+在現有 Reminder 資料結構加入可選欄位：
+
+workProfileId?: string
+
+重要：
+
+此欄位必須 optional。
+
+舊 Reminder 沒有 workProfileId 時必須正常運作。
+
+不要批次修改舊 Reminder。
+
+不要自動將 AirportTransfer 指派到任何 WorkProfile。
+
+不要進行 migration。
+
+────────────────────────
+
+二、新增事項頁加入「工作」選擇
+
+在共用表單中加入：
+
+工作
+[ 不指定工作 ▼ ]
+
+選項來源：
+
+所有 enabled = true 的 WorkProfile
+
+例如：
+
+不指定工作
+A 車行
+B 車行
+個人接案
+
+儲存時：
+
+若選擇 A 車行：
+
+workProfileId = A 車行的 id
+
+若選擇不指定工作：
+
+workProfileId = undefined
+
+────────────────────────
+
+三、編輯事項頁加入相同工作選擇
+
+編輯頁必須使用相同 WorkProfile 選項來源。
+
+例如 Reminder 已有：
+
+workProfileId = work_a
+
+進入編輯頁時：
+
+工作
+[ A 車行 ▼ ]
+
+修改成 B 車行並儲存後：
+
+只更新 workProfileId。
+
+不要修改 Reminder id。
+
+不要修改原有日期、時間、提醒、收支資料。
+
+────────────────────────
+
+四、欄位位置
+
+目前共用表單基準：
+
+標題
+群組
+日期
+時間
+提醒
+地點
+
+工作
+
+Type／Template 專屬資料
+
+備註
+收支
+提醒設定
+行事曆
+
+本次先將：
+
+工作
+
+放在「地點」之後、「專屬資料」之前。
+
+新增頁與編輯頁位置必須一致。
+
+────────────────────────
+
+五、不要因選擇 WorkProfile 自動改 Type
+
+例如目前 Reminder：
+
+type = General
+
+使用者選：
+
+A 車行
+templateType = airport_transfer
+
+本次不要自動修改：
+
+type = AirportTransfer
+
+也不要自動載入機場接送欄位。
+
+本次只儲存：
+
+workProfileId
+
+模板載入由後續 Task 處理。
+
+────────────────────────
+
+六、工作資料板刪除保護
+
+現在 Reminder 已可能關聯 WorkProfile。
+
+因此刪除 WorkProfile 前必須檢查是否有 Reminder 使用：
+
+reminder.workProfileId === workProfile.id
+
+如果沒有關聯：
+
+允許正常刪除。
+
+如果已有關聯：
+
+不要直接刪除。
+
+顯示：
+
+此工作目前仍有事項正在使用。
+
+請先將相關事項改為其他工作，
+或設為「不指定工作」。
+
+[ 知道了 ]
+
+V1 不做自動批次搬移。
+
+不要刪除 Reminder。
+
+不要自動清除所有 workProfileId。
+
+────────────────────────
+
+七、停用 WorkProfile
+
+如果 WorkProfile：
+
+enabled = false
+
+新增事項頁：
+
+新的選擇清單中不顯示。
+
+但如果既有 Reminder 已關聯該 WorkProfile：
+
+編輯頁仍必須能顯示目前工作名稱。
+
+例如：
+
+B 車行（已停用）
+
+使用者可以：
+
+保留原關聯
+改成其他工作
+改成不指定工作
+
+不要因停用 WorkProfile 自動清除 Reminder 關聯。
+
+────────────────────────
+
+八、Reminder 顯示工作名稱
+
+在 Reminder Editor 中顯示目前關聯工作名稱。
+
+例如：
+
+工作
+A 車行
+
+Reminder Card 本次可以先不新增工作名稱顯示。
+
+不要為此修改所有 Card layout。
+
+卡片摘要顯示留到後續 UI Task。
+
+────────────────────────
+
+九、資料安全
+
+請確認：
+
+1. 舊 Reminder 沒有 workProfileId 時正常。
+2. WorkProfile Store 尚未初始化時不 crash。
+3. workProfileId 找不到對應 WorkProfile 時不 crash。
+4. 不因 workProfileId 無效而刪除 Reminder。
+5. 不因切換工作而修改 Finance Record。
+6. 不因切換工作而修改 Financial Item。
+7. 不因選擇工作而修改 Reminder Type。
+
+────────────────────────
+
+十、測試案例
+
+測試 1：
+
+建立 Reminder：
+
+標題：測試工作
+工作：A 車行
+
+預期：
+
+Reminder 儲存正確 workProfileId。
+
+────────────────
+
+測試 2：
+
+重新整理。
+
+預期：
+
+Reminder 編輯頁仍顯示：
+
+工作：A 車行
+
+────────────────
+
+測試 3：
+
+將工作改成：
+
+B 車行
+
+預期：
+
+只修改 workProfileId。
+
+Reminder id 不變。
+
+────────────────
+
+測試 4：
+
+改成：
+
+不指定工作
+
+預期：
+
+workProfileId 清除。
+
+其他 Reminder 資料不變。
+
+────────────────
+
+測試 5：
+
+停用 B 車行。
+
+預期：
+
+新建 Reminder 的工作清單不顯示 B 車行。
+
+既有關聯 B 車行的 Reminder 仍顯示：
+
+B 車行（已停用）
+
+────────────────
+
+測試 6：
+
+嘗試刪除仍有 Reminder 關聯的 A 車行。
+
+預期：
+
+阻止刪除並提示使用者。
+
+────────────────
+
+測試 7：
+
+刪除沒有任何 Reminder 關聯的 WorkProfile。
+
+預期：
+
+正常刪除。
+
+────────────────
+
+測試 8：
+
+開啟舊 Reminder。
+
+預期：
+
+沒有 workProfileId 仍正常顯示與編輯。
+
+────────────────────────
+
+十一、本次不要修改
+
+不要修改 AI Parser。
+不要修改 Groq API。
+不要修改 /api/parse。
+不要修改 AirportTransfer 現有欄位。
+不要移除 AirportTransfer Type。
+不要建立 Template Data。
+不要建立機場接送新表單。
+不要修改 Finance Store。
+不要修改 FinancialItem。
+不要修改收支完成流程。
+不要修改 Reminder Card layout。
+不要清除 LocalStorage。
+不要進行舊資料 migration。
+不要大幅重構 App.tsx。
+不要自動開始下一個 Task。
+
+────────────────────────
+
+完成後請使用繁體中文回報：
+
+1. Reminder 如何保存 workProfileId。
+2. 新增頁如何選擇工作。
+3. 編輯頁如何修改工作。
+4. 新增與編輯欄位位置是否一致。
+5. 停用 WorkProfile 如何處理。
+6. 已被 Reminder 使用的 WorkProfile 是否禁止刪除。
+7. 舊 Reminder 是否正常相容。
+8. 是否影響 Reminder Type。
+9. 是否影響 Finance Record 或 Financial Item。
+10. 八個測試案例結果。
+11. 手機版測試結果。
+12. TypeScript 是否通過。
+
+完成後停止，不要自動開始下一個 Task。

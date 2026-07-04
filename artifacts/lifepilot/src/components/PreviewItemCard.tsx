@@ -10,6 +10,7 @@ import { normalizeDate, normalizeTime } from "../utils";
 import { ReminderEditor } from "./ReminderEditor";
 import { TimePicker } from "./TimePicker";
 import { CategorySelect } from "./CategorySelect";
+import { WorkProfileSelect } from "./WorkProfileSelect";
 import type { FinancialItem } from "../store";
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
@@ -649,6 +650,15 @@ export function PreviewItemCard({
             onChange={(updated) => upd({ reminders: updated })}
             hasDate={draft.type === "Payment" ? !!draft.dueDate : !!draft.date}
             hasTime={showTimeFields ? !draft.allDay && !!draft.startTime : false}
+          />
+        </FormRow>
+
+        {/* Work profile */}
+        <FormRow label="工作">
+          <WorkProfileSelect
+            value={draft.workProfileId}
+            onChange={(id) => upd({ workProfileId: id })}
+            currentProfileId={draft.workProfileId}
           />
         </FormRow>
 

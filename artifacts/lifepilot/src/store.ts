@@ -91,6 +91,8 @@ export interface Reminder {
   financialDueDate?: string;
   // Multi-item financial tracking (v2) — replaces single financialStatus
   financialItems?: FinancialItem[];
+  // Work profile association (optional — old reminders without this field work normally)
+  workProfileId?: string;
 }
 
 // ─── Financial Item ───────────────────────────────────────────────────────────

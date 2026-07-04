@@ -118,6 +118,8 @@ export interface PreviewItem {
   pendingText: string;
   // Reminder notifications (set in inline editor before saving)
   reminders: ReminderNotification[];
+  // Work profile association (optional)
+  workProfileId?: string;
   // Financial status
   financialStatus: "none" | "receivable" | "payable";
   expectedAmount?: number;

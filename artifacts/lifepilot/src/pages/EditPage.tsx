@@ -6,6 +6,7 @@ import { TYPE_LABEL, type AllType } from "../previewTypes";
 import { ReminderEditor } from "../components/ReminderEditor";
 import { TimePicker } from "../components/TimePicker";
 import { CategorySelect } from "../components/CategorySelect";
+import { WorkProfileSelect } from "../components/WorkProfileSelect";
 import {
   loadFinanceEntries,
   saveFinanceEntries,
@@ -556,7 +557,8 @@ export function EditPage({
   const [endTime,   setEndTime]   = useState(reminder.endTime ?? "");
   const [location,  setLocation]  = useState(reminder.location ?? "");
   const [notes,     setNotes]     = useState(reminder.notes ?? "");
-  const [category,  setCategory]  = useState(reminder.category ?? "");
+  const [category,     setCategory]     = useState(reminder.category ?? "");
+  const [workProfileId, setWorkProfileId] = useState<string | undefined>(reminder.workProfileId);
 
   // ── Type-specific ──────────────────────────────────────────────────────────
   const [flightNumber,  setFlightNumber]  = useState(reminder.flightNumber ?? "");
@@ -823,6 +825,7 @@ export function EditPage({
       endTime:   timeMode === "range"  ? endTime   : "",
       allDay:    timeMode === "allday",
       location, notes, category,
+      workProfileId: workProfileId || undefined,
       flightNumber, transferType, district, vehicleType, price,
       shoppingItems,
       amount: savedAmount,
@@ -911,6 +914,17 @@ export function EditPage({
       {!isPending && (
         <FieldRow label="地點">
           <TextInput value={location} onChange={setLocation} placeholder="地點（選填）" />
+        </FieldRow>
+      )}
+
+      {/* 工作 */}
+      {!isPending && (
+        <FieldRow label="工作">
+          <WorkProfileSelect
+            value={workProfileId}
+            onChange={setWorkProfileId}
+            currentProfileId={reminder.workProfileId}
+          />
         </FieldRow>
       )}
 

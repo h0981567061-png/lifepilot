@@ -11,6 +11,7 @@ import {
   updateWorkProfile,
   deleteWorkProfile,
 } from "../workProfileStore";
+import type { Reminder } from "../store";
 
 // ─── TextInput helper ─────────────────────────────────────────────────────────
 
@@ -262,19 +263,55 @@ function DeleteConfirm({
   );
 }
 
+// ─── Delete Blocked ───────────────────────────────────────────────────────────
+
+function DeleteBlocked({
+  profile,
+  linkedCount,
+  onClose,
+}: {
+  profile: WorkProfile;
+  linkedCount: number;
+  onClose: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5 space-y-4">
+      <div>
+        <p className="text-sm font-semibold text-white">無法刪除此工作資料板</p>
+        <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+          此工作目前仍有 <span className="text-amber-300 font-semibold">{linkedCount}</span> 個事項正在使用。
+        </p>
+        <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
+          請先將相關事項改為其他工作，或設為「不指定工作」。
+        </p>
+        <p className="text-xs text-gray-600 mt-1">（工作名稱：{profile.name}）</p>
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="w-full py-3 rounded-xl text-sm font-semibold text-white bg-white/10 hover:bg-white/15 border border-white/10 transition-colors"
+      >
+        知道了
+      </button>
+    </div>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 type UIMode =
   | { kind: "list" }
   | { kind: "adding" }
   | { kind: "editing"; id: string }
-  | { kind: "deleting"; id: string };
+  | { kind: "deleting"; id: string }
+  | { kind: "block_delete"; id: string; linkedCount: number };
 
 interface Props {
   onClose: () => void;
+  savedReminders: Reminder[];
 }
 
-export function WorkProfilesPage({ onClose }: Props) {
+export function WorkProfilesPage({ onClose, savedReminders }: Props) {
   const [profiles, setProfiles] = useState<WorkProfile[]>(() => getWorkProfiles());
   const [mode, setMode] = useState<UIMode>({ kind: "list" });
 
@@ -312,13 +349,14 @@ export function WorkProfilesPage({ onClose }: Props) {
     setMode({ kind: "list" });
   }
 
-  const editingProfile = mode.kind === "editing"
-    ? profiles.find((p) => p.id === mode.id)
-    : undefined;
-
-  const deletingProfile = mode.kind === "deleting"
-    ? profiles.find((p) => p.id === mode.id)
-    : undefined;
+  function handleRequestDelete(profileId: string) {
+    const linked = savedReminders.filter((r) => r.workProfileId === profileId);
+    if (linked.length > 0) {
+      setMode({ kind: "block_delete", id: profileId, linkedCount: linked.length });
+    } else {
+      setMode({ kind: "deleting", id: profileId });
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 pb-24">
@@ -387,12 +425,23 @@ export function WorkProfilesPage({ onClose }: Props) {
             );
           }
 
+          if (mode.kind === "block_delete" && mode.id === profile.id) {
+            return (
+              <DeleteBlocked
+                key={profile.id}
+                profile={profile}
+                linkedCount={mode.linkedCount}
+                onClose={() => setMode({ kind: "list" })}
+              />
+            );
+          }
+
           return (
             <WorkCard
               key={profile.id}
               profile={profile}
               onEdit={() => setMode({ kind: "editing", id: profile.id })}
-              onDelete={() => setMode({ kind: "deleting", id: profile.id })}
+              onDelete={() => handleRequestDelete(profile.id)}
             />
           );
         })}
@@ -418,9 +467,6 @@ export function WorkProfilesPage({ onClose }: Props) {
           </p>
         )}
       </div>
-
-      {/* Scroll-to-form helper — if deletingProfile is showing and not in list */}
-      {deletingProfile && mode.kind !== "deleting" && null}
     </div>
   );
 }
