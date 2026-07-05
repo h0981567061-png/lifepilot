@@ -9,6 +9,7 @@ import { ReminderEditor } from "../components/ReminderEditor";
 import { TimePicker } from "../components/TimePicker";
 import { CategorySelect } from "../components/CategorySelect";
 import { WorkProfileSelect } from "../components/WorkProfileSelect";
+import { WorkProfileSummary } from "../components/WorkProfileSummary";
 import {
   loadFinanceEntries,
   saveFinanceEntries,
@@ -950,6 +951,11 @@ export function EditPage({
             onChange={handleWorkProfileChange}
             currentProfileId={reminder.workProfileId}
           />
+          {workProfileId && (
+            <div className="mt-2">
+              <WorkProfileSummary workProfileId={workProfileId} />
+            </div>
+          )}
         </FieldRow>
       )}
 

@@ -11,6 +11,7 @@ import { ReminderEditor } from "./ReminderEditor";
 import { TimePicker } from "./TimePicker";
 import { CategorySelect } from "./CategorySelect";
 import { WorkProfileSelect } from "./WorkProfileSelect";
+import { WorkProfileSummary } from "./WorkProfileSummary";
 import { AirportTransferTemplateFields } from "./AirportTransferTemplateFields";
 import { getWorkProfiles } from "../workProfileStore";
 import type { FinancialItem } from "../store";
@@ -678,11 +679,16 @@ export function PreviewItemCard({
 
         {/* Work profile */}
         <FormRow label="工作">
-          <WorkProfileSelect
-            value={draft.workProfileId}
-            onChange={handleWorkProfileChange}
-            currentProfileId={draft.workProfileId}
-          />
+          <div className="space-y-2">
+            <WorkProfileSelect
+              value={draft.workProfileId}
+              onChange={handleWorkProfileChange}
+              currentProfileId={draft.workProfileId}
+            />
+            {draft.workProfileId && (
+              <WorkProfileSummary workProfileId={draft.workProfileId} />
+            )}
+          </div>
         </FormRow>
 
         {/* WorkProfile template-switch confirmation */}

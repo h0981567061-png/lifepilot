@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { type Reminder, type ReminderType, type FinancialItem, updateReminder } from "../store";
+import { getWorkProfileById } from "../workProfileStore";
 import { QuickFinanceModal } from "../components/QuickFinanceModal";
 import { type FinanceEntry, loadFinanceEntries, fmtCurrency } from "../financeStore";
 
@@ -379,6 +380,20 @@ function ReminderCard({
           <span className={`text-xs px-2 py-0.5 rounded-full border font-medium shrink-0 ${badge.className}`}>
             {badge.label}
           </span>
+          {/* WorkProfile tag — only when set; reads current profile name live */}
+          {reminder.workProfileId && (() => {
+            const wp = getWorkProfileById(reminder.workProfileId);
+            if (!wp) return null;
+            return (
+              <span className={`text-xs px-2 py-0.5 rounded-full border font-medium shrink-0 ${
+                wp.enabled
+                  ? "bg-violet-500/15 text-violet-300 border-violet-500/25"
+                  : "bg-amber-500/10 text-amber-400/70 border-amber-500/20"
+              }`}>
+                {wp.name}{!wp.enabled && "（停用）"}
+              </span>
+            );
+          })()}
           {overdue && (
             <span className="text-xs px-2 py-0.5 rounded-full border font-medium shrink-0 bg-rose-500/15 text-rose-300 border-rose-500/25">
               已過期
