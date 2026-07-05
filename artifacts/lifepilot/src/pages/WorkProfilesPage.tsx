@@ -17,6 +17,7 @@ import {
   deleteWorkProfile,
   detectWorkType,
   getDefaultFields,
+  WORK_TEMPLATE_LABELS,
 } from "../workProfileStore";
 import type { Reminder } from "../store";
 
@@ -240,10 +241,19 @@ function WorkProfileEditForm({
   // Name — drives detection for new profiles only
   const [name, setName] = useState(initialProfile?.name ?? "");
 
-  // detectedType: for edit, fixed to existing templateType; for new, live from name
-  const [detectedType, setDetectedType] = useState<WorkTemplateType>(
+  // confirmedType: the actual format in use — only changed by explicit user action.
+  // For edit: fixed to the existing templateType, never re-detected.
+  // For new: starts as general_work; changed only when user clicks "使用專屬格式".
+  const [confirmedType, setConfirmedType] = useState<WorkTemplateType>(
     initialProfile?.templateType ?? "general_work"
   );
+
+  // formatSuggestion: non-null while a suggestion banner is pending (new profiles only).
+  // Does NOT auto-apply; waits for user confirmation.
+  const [formatSuggestion, setFormatSuggestion] = useState<WorkTemplateType | null>(null);
+
+  // suggestionResolved: once the user accepts or declines, stop prompting for this session.
+  const [suggestionResolved, setSuggestionResolved] = useState(false);
 
   // Dynamic fields — the core data list
   const [fields, setFields] = useState<WorkField[]>(() =>
@@ -255,22 +265,40 @@ function WorkProfileEditForm({
   // ID of the field waiting for deletion confirmation; null = none
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
-  // ── Name change: live detection for NEW profiles ──
+  // ── Name change: suggest format for NEW profiles only; never auto-apply ──
   function handleNameChange(v: string) {
     setName(v);
-    if (isEdit) return;
+    if (isEdit) return;           // Edit mode: name never affects templateType
+    if (suggestionResolved) return; // User already made a choice this session
 
-    const newType = detectWorkType(v);
-    if (newType === detectedType) return;
-
-    // Only auto-reset if all system_suggested fields are still empty
-    const allEmpty = fields.every(
-      (f) => f.source === "system_suggested" && f.value.trim() === ""
-    );
-    if (allEmpty) {
-      setFields(getDefaultFields(newType));
+    const suggested = detectWorkType(v);
+    if (suggested !== "general_work" && suggested !== confirmedType) {
+      // Detected a special format different from what's currently confirmed
+      setFormatSuggestion(suggested);
+    } else {
+      // Name no longer suggests a special format → hide banner
+      setFormatSuggestion(null);
     }
-    setDetectedType(newType);
+    // Fields are NOT touched here — only changed by explicit user confirmation.
+  }
+
+  // User clicks "使用專屬格式"
+  function handleAcceptFormat() {
+    if (!formatSuggestion) return;
+    setConfirmedType(formatSuggestion);
+    // Replace system_suggested fields with new format defaults; keep custom fields intact.
+    const customFields = fields.filter((f) => f.source === "user_custom");
+    const newDefaults = getDefaultFields(formatSuggestion);
+    setFields([...newDefaults, ...customFields]);
+    setFormatSuggestion(null);
+    setSuggestionResolved(true);
+  }
+
+  // User clicks "保持一般格式"
+  function handleDeclineFormat() {
+    setFormatSuggestion(null);
+    setSuggestionResolved(true);
+    // confirmedType stays as general_work; fields unchanged
   }
 
   // ── Field mutations ──
@@ -314,10 +342,12 @@ function WorkProfileEditForm({
 
   function handleSave() {
     const sorted = [...fields].sort((a, b) => a.sortOrder - b.sortOrder);
-    // For edit: preserve existing templateType; for new: use detected type
+    // templateType source-of-truth:
+    //   edit  → always the original initialProfile.templateType (name change never alters it)
+    //   new   → confirmedType, which starts as general_work and only changes by user action
     const templateType: WorkTemplateType = isEdit
       ? (initialProfile?.templateType ?? "general_work")
-      : detectedType;
+      : confirmedType;
 
     onSave({
       name: name.trim(),
@@ -340,6 +370,38 @@ function WorkProfileEditForm({
         <label className="block text-xs text-gray-500 mb-1.5 font-medium">工作名稱</label>
         <TextInput value={name} onChange={handleNameChange} placeholder="輸入工作名稱" />
       </div>
+
+      {/* ── Format suggestion banner (new profiles only, non-blocking) ── */}
+      {!isEdit && formatSuggestion && (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3.5 space-y-3">
+          <div>
+            <p className="text-xs font-semibold text-amber-300 mb-1">
+              偵測到這可能是{WORK_TEMPLATE_LABELS[formatSuggestion]}工作
+            </p>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              是否使用{WORK_TEMPLATE_LABELS[formatSuggestion]}專屬格式？
+              <br />
+              <span className="text-gray-600">專屬格式包含對應的建議欄位，確認後可再自行調整。</span>
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleAcceptFormat}
+              className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 transition-colors"
+            >
+              使用專屬格式
+            </button>
+            <button
+              type="button"
+              onClick={handleDeclineFormat}
+              className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-gray-300 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+            >
+              保持一般格式
+            </button>
+          </div>
+        </div>
+      )}
 
       <Divider />
 
