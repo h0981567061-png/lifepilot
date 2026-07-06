@@ -834,6 +834,8 @@ export default function App() {
   const [activePage, setActivePage] = useState<PageId>("add");
   const [showCategoryMgmt, setShowCategoryMgmt] = useState(false);
   const [showWorkProfiles, setShowWorkProfiles] = useState(false);
+  // "select" = dual-entry choice screen, "ai" = text-paste flow, "manual" = blank draft flow
+  const [addMode, setAddMode] = useState<"select" | "ai" | "manual">("select");
   const [savedReminders, setSavedReminders] = useState<Reminder[]>(() => loadReminders());
   const [bulkDatePickerOpen, setBulkDatePickerOpen] = useState(false);
   const [bulkDateValue, setBulkDateValue] = useState("");
@@ -1190,6 +1192,25 @@ export default function App() {
     setBulkDateValue("");
     setBulkConfirmNeeded("none");
     setCreateConfirmPending(false);
+    setAddMode("select");
+  }
+
+  // ── Manual new: create blank draft → shared preview editor ──────────────────
+  function handleManualNew() {
+    const item = emptyPreviewItem("General");
+    setPreviewItems([item]);
+    setAnalyzed(true);
+    setEditingId(item.id);
+    setAddMode("manual");
+  }
+
+  function handleGoBackToSelect() {
+    if (addMode === "manual") {
+      setPreviewItems([]);
+      setAnalyzed(false);
+      setEditingId(null);
+    }
+    setAddMode("select");
   }
 
   function handleCreate() {
@@ -1223,41 +1244,98 @@ export default function App() {
       <main className="flex-1 overflow-y-auto pb-20">
       {activePage === "add" && (
       <div className="max-w-2xl mx-auto px-6 py-14">
-        <div className="mb-10">
-          <h1 className="text-5xl font-bold tracking-tight text-white mb-2">
-            LifePilot
-          </h1>
-          <p className="text-gray-400 text-base">貼上訊息，AI 幫你整理成提醒事項</p>
-        </div>
 
-        <div className="mb-2">
-          <textarea
-            value={message}
-            onChange={(e) => {
-              setMessage(e.target.value);
-              setAnalyzed(false);
-              setError("");
-            }}
-            placeholder={PLACEHOLDER}
-            rows={8}
-            className="w-full rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 px-5 py-4 text-base resize-none focus:outline-none focus:border-blue-500/60 transition-all duration-200"
-          />
-        </div>
-
-        {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
-
-        <button
-          onClick={handleAnalyze}
-          disabled={aiLoading || !message.trim()}
-          className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:bg-blue-600/40 disabled:cursor-not-allowed text-white font-semibold text-base transition-all duration-150 shadow-lg shadow-blue-600/20 mt-4 mb-10"
-        >
-          {aiLoading ? "正在整理…" : "開始整理"}
-        </button>
-
-        {analyzed && (
+        {/* ── 選擇新增方式 ─────────────────────────────────────────────────── */}
+        {addMode === "select" && (
           <>
-            {/* ── Compact detection summary ── */}
-            {detectionResult && (() => {
+            <div className="mb-10">
+              <h1 className="text-5xl font-bold tracking-tight text-white mb-2">LifePilot</h1>
+              <p className="text-gray-400 text-base">選擇新增事項的方式</p>
+            </div>
+            <div className="flex flex-col gap-4">
+              {/* AI 智慧輸入 */}
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
+                <p className="text-base font-semibold text-white mb-1">AI 智慧輸入</p>
+                <p className="text-sm text-gray-500 mb-4">貼上文字，由 AI 協助整理事項內容</p>
+                <button
+                  onClick={() => setAddMode("ai")}
+                  className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold text-base transition-all duration-150 shadow-lg shadow-blue-600/20"
+                >
+                  AI 智慧輸入
+                </button>
+              </div>
+              {/* 手動新增 */}
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
+                <p className="text-base font-semibold text-white mb-1">手動新增</p>
+                <p className="text-sm text-gray-500 mb-4">自行填寫事項內容</p>
+                <button
+                  onClick={handleManualNew}
+                  className="w-full py-3.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 active:bg-white/15 text-white font-semibold text-base transition-all duration-150"
+                >
+                  ＋ 手動新增
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── 返回按鈕（AI / 手動 模式共用）──────────────────────────────── */}
+        {addMode !== "select" && (
+          <button
+            onClick={handleGoBackToSelect}
+            className="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1 mb-8"
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+              <path d="M10 4L6 8l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            返回
+          </button>
+        )}
+
+        {/* ── AI 智慧輸入：標題 + 文字區 + 分析按鈕 ───────────────────────── */}
+        {addMode === "ai" && (
+          <>
+            <div className="mb-10">
+              <h1 className="text-5xl font-bold tracking-tight text-white mb-2">LifePilot</h1>
+              <p className="text-gray-400 text-base">貼上訊息，AI 幫你整理成提醒事項</p>
+            </div>
+            <div className="mb-2">
+              <textarea
+                value={message}
+                onChange={(e) => {
+                  setMessage(e.target.value);
+                  setAnalyzed(false);
+                  setError("");
+                }}
+                placeholder={PLACEHOLDER}
+                rows={8}
+                className="w-full rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 px-5 py-4 text-base resize-none focus:outline-none focus:border-blue-500/60 transition-all duration-200"
+              />
+            </div>
+            {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
+            <button
+              onClick={handleAnalyze}
+              disabled={aiLoading || !message.trim()}
+              className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:bg-blue-600/40 disabled:cursor-not-allowed text-white font-semibold text-base transition-all duration-150 shadow-lg shadow-blue-600/20 mt-4 mb-10"
+            >
+              {aiLoading ? "正在整理…" : "開始整理"}
+            </button>
+          </>
+        )}
+
+        {/* ── 手動新增：標題 ───────────────────────────────────────────────── */}
+        {addMode === "manual" && (
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-white mb-1">手動新增事項</h1>
+            <p className="text-sm text-gray-500">填寫事項資料後點擊儲存</p>
+          </div>
+        )}
+
+        {/* ── 共用預覽區：AI 分析完成 或 手動新增進入後顯示 ────────────────── */}
+        {addMode !== "select" && analyzed && (
+          <>
+            {/* AI only：偵測摘要 */}
+            {addMode === "ai" && detectionResult && (() => {
               const typeSet = new Set(previewItems.map((i) => i.type));
               const multiTypes = typeSet.size;
               return (
@@ -1287,82 +1365,85 @@ export default function App() {
               );
             })()}
 
-            {/* ── Preview section ── */}
             {totalCount > 0 ? (
               <>
-                {/* Heading */}
+                {/* 標題列 */}
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-white">
-                    已整理{" "}
-                    <span className={accentText(accentColor)}>{totalCount}</span>{" "}
-                    個事項
+                    {addMode === "manual" ? (
+                      "填寫事項資料"
+                    ) : (
+                      <>已整理{" "}<span className={accentText(accentColor)}>{totalCount}</span>{" "}個事項</>
+                    )}
                   </h2>
                 </div>
 
-                {/* ── Bulk date apply ── */}
-                <div className="mb-4">
-                  {!bulkDatePickerOpen ? (
-                    <button
-                      onClick={() => setBulkDatePickerOpen(true)}
-                      className="text-xs px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 text-gray-400 hover:text-gray-300 transition-all"
-                    >
-                      📅 全部套用日期
-                    </button>
-                  ) : (
-                    <div className="flex flex-col gap-3 p-4 rounded-xl border border-white/10 bg-white/5">
-                      <p className="text-sm font-semibold text-white">套用日期到已選取事項</p>
-                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="date"
-                          value={bulkDateValue}
-                          onChange={(e) => { setBulkDateValue(e.target.value); setBulkConfirmNeeded("none"); }}
-                          className="flex-1 text-sm rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white focus:outline-none focus:border-blue-500/50"
-                          style={{ colorScheme: "dark" }}
-                        />
-                        <button
-                          onClick={handleBulkApplyClick}
-                          disabled={!bulkDateValue}
-                          className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm font-medium transition-all"
-                        >
-                          套用
-                        </button>
-                        <button
-                          onClick={() => { setBulkDatePickerOpen(false); setBulkConfirmNeeded("none"); }}
-                          className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-400 text-sm transition-all"
-                        >
-                          取消
-                        </button>
-                      </div>
-                      {bulkConfirmNeeded === "has-dates" && (
-                        <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
-                          <p className="text-sm text-amber-300 mb-2">部分已選事項已有日期，要如何套用？</p>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleBulkApply("missing-only")}
-                              className="flex-1 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 text-xs font-medium"
-                            >
-                              只套用無日期事項
-                            </button>
-                            <button
-                              onClick={() => handleBulkApply("all")}
-                              className="flex-1 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-medium"
-                            >
-                              全部覆蓋
-                            </button>
-                            <button
-                              onClick={() => setBulkConfirmNeeded("none")}
-                              className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-400 text-xs"
-                            >
-                              取消
-                            </button>
-                          </div>
+                {/* AI only：批次套用日期 */}
+                {addMode === "ai" && (
+                  <div className="mb-4">
+                    {!bulkDatePickerOpen ? (
+                      <button
+                        onClick={() => setBulkDatePickerOpen(true)}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 text-gray-400 hover:text-gray-300 transition-all"
+                      >
+                        📅 全部套用日期
+                      </button>
+                    ) : (
+                      <div className="flex flex-col gap-3 p-4 rounded-xl border border-white/10 bg-white/5">
+                        <p className="text-sm font-semibold text-white">套用日期到已選取事項</p>
+                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="date"
+                            value={bulkDateValue}
+                            onChange={(e) => { setBulkDateValue(e.target.value); setBulkConfirmNeeded("none"); }}
+                            className="flex-1 text-sm rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white focus:outline-none focus:border-blue-500/50"
+                            style={{ colorScheme: "dark" }}
+                          />
+                          <button
+                            onClick={handleBulkApplyClick}
+                            disabled={!bulkDateValue}
+                            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm font-medium transition-all"
+                          >
+                            套用
+                          </button>
+                          <button
+                            onClick={() => { setBulkDatePickerOpen(false); setBulkConfirmNeeded("none"); }}
+                            className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-400 text-sm transition-all"
+                          >
+                            取消
+                          </button>
                         </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                        {bulkConfirmNeeded === "has-dates" && (
+                          <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
+                            <p className="text-sm text-amber-300 mb-2">部分已選事項已有日期，要如何套用？</p>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleBulkApply("missing-only")}
+                                className="flex-1 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 text-xs font-medium"
+                              >
+                                只套用無日期事項
+                              </button>
+                              <button
+                                onClick={() => handleBulkApply("all")}
+                                className="flex-1 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-medium"
+                              >
+                                全部覆蓋
+                              </button>
+                              <button
+                                onClick={() => setBulkConfirmNeeded("none")}
+                                className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-400 text-xs"
+                              >
+                                取消
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                {/* PreviewItemCard — unified card for all types */}
+                {/* PreviewItemCard — AI 與手動共用同一元件 */}
                 <div className="flex flex-col gap-3 mb-8">
                   {previewItems.map((item) => (
                     <PreviewItemCard
@@ -1383,13 +1464,13 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Create All button */}
+                {/* 儲存 / 建立全部 按鈕（共用 handleCreate） */}
                 <button
                   onClick={handleCreate}
                   disabled={totalCount === 0}
                   className="w-full py-3.5 rounded-xl font-semibold text-base transition-all duration-150 shadow-lg disabled:opacity-40 disabled:cursor-not-allowed bg-white text-gray-950 hover:bg-gray-100 active:bg-gray-200"
                 >
-                  建立全部（{totalCount}）
+                  {addMode === "manual" ? "儲存" : `建立全部（${totalCount}）`}
                 </button>
                 {createConfirmPending && (
                   <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
@@ -1412,12 +1493,13 @@ export default function App() {
                     </div>
                   </div>
                 )}
-
               </>
             ) : (
-              <p className="text-sm text-gray-500 mt-2">
-                未找到可解析的事項，請確認訊息內容後再試。
-              </p>
+              addMode === "ai" && (
+                <p className="text-sm text-gray-500 mt-2">
+                  未找到可解析的事項，請確認訊息內容後再試。
+                </p>
+              )
             )}
           </>
         )}
@@ -1479,6 +1561,8 @@ export default function App() {
           setShowCategoryMgmt(false);
           setShowWorkProfiles(false);
           setEditingReminderId(null);
+          // Leaving "add" tab: reset to select screen
+          if (page !== "add") setAddMode("select");
         }}
         remindersCount={savedReminders.length}
       />
