@@ -1,3 +1,4 @@
 - [Time/date normalization](time-date-normalization.md) — normalizeTime/normalizeDate in utils.ts; always normalize before storing or displaying, never raw-slice time strings.
 - [FinancialItem 資料架構](financial-item-architecture.md) — v2 多筆款項清單設計；統一收支 UI（UnifiedAddForm 四類型：待收/待付/收入/支出）；confirm flow 防重複雙保險；deriveFinancialItems backward compat
+- [WorkProfile 聯絡人架構](work-contact-architecture.md) — WorkContact 存放於 WorkProfile.contacts[]；自訂欄位 UI 分 SystemFieldRow/CustomFieldRow；Reminder.contactId 關聯聯絡人
 - [Finance-Reminder 同步關鍵規則](finance-reminder-sync.md) — FinancialItem 必須有 dueDate；monthReceivable filter 用 dueDate || reminder.date；刪除帶關聯收支的 reminder 需詢問

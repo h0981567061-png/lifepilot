@@ -564,6 +564,7 @@ export function EditPage({
   const [notes,     setNotes]     = useState(reminder.notes ?? "");
   const [category,     setCategory]     = useState(reminder.category ?? "");
   const [workProfileId, setWorkProfileId] = useState<string | undefined>(reminder.workProfileId);
+  const [contactId,     setContactId]     = useState<string | undefined>(reminder.contactId);
   const [templateData, setTemplateData]   = useState<TemplateData | undefined>(reminder.templateData);
 
   // ── WorkProfile switch protection ──────────────────────────────────────────
@@ -585,6 +586,8 @@ export function EditPage({
       return;
     }
     setWorkProfileId(newId);
+    // Clear contact selection when work profile changes
+    setContactId(undefined);
   }
 
   // ── Type-specific ──────────────────────────────────────────────────────────
@@ -855,6 +858,7 @@ export function EditPage({
       allDay:    timeMode === "allday",
       location, notes, category,
       workProfileId: workProfileId || undefined,
+      contactId: contactId || undefined,
       templateData: templateData ?? undefined,
       flightNumber, transferType, district, vehicleType, price,
       shoppingItems,
@@ -983,6 +987,29 @@ export function EditPage({
               <WorkProfileSummary workProfileId={workProfileId} />
             </div>
           )}
+          {/* Contact selector — visible only when the linked work profile has contacts */}
+          {workProfileId && (() => {
+            const wp = allProfiles.find(p => p.id === workProfileId);
+            const contacts = wp?.contacts ?? [];
+            if (contacts.length === 0) return null;
+            return (
+              <div className="mt-2">
+                <select
+                  value={contactId ?? ""}
+                  onChange={e => setContactId(e.target.value || undefined)}
+                  className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500/60 transition-colors appearance-none"
+                  style={{ colorScheme: "dark" }}
+                >
+                  <option value="">不指定聯絡人</option>
+                  {contacts.map(c => (
+                    <option key={c.id} value={c.id}>
+                      [{c.type}] {c.name || "（未填姓名）"}{c.company ? ` — ${c.company}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          })()}
         </FieldRow>
       )}
 

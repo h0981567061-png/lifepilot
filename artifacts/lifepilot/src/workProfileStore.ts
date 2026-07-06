@@ -48,6 +48,35 @@ export interface WorkProfileData {
   customFields?: CustomField[];
 }
 
+// ─── Contact / Customer ───────────────────────────────────────────────────────
+// A work profile can have multiple contacts (clients, vendors, partners, etc.)
+// Stored inside WorkProfile.contacts — no separate store needed.
+
+export type WorkContactType = "客戶" | "聯絡人" | "供應商" | "合作夥伴" | "其他";
+
+export const WORK_CONTACT_TYPES: readonly WorkContactType[] = [
+  "客戶", "聯絡人", "供應商", "合作夥伴", "其他",
+] as const;
+
+export interface WorkContactField {
+  id: string;
+  label: string;
+  value: string;
+}
+
+export interface WorkContact {
+  id: string;
+  type: WorkContactType;
+  name: string;
+  company?: string;
+  role?: string;
+  phone?: string;
+  address?: string;
+  note?: string;
+  customFields?: WorkContactField[];
+  createdAt: string;
+}
+
 // ─── WorkProfile ──────────────────────────────────────────────────────────────
 
 export interface WorkProfile {
@@ -62,6 +91,8 @@ export interface WorkProfile {
   fields?: WorkField[];
   // Legacy flat storage — kept for backward compat only.
   profileData?: WorkProfileData;
+  // Contacts/customers associated with this work profile.
+  contacts?: WorkContact[];
   createdAt: string;
   updatedAt: string;
 }

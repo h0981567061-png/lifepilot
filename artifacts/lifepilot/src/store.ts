@@ -95,6 +95,8 @@ export interface Reminder {
   financialItems?: FinancialItem[];
   // Work profile association (optional — old reminders without this field work normally)
   workProfileId?: string;
+  // Contact associated with this reminder (references WorkContact.id within the linked work profile)
+  contactId?: string;
   // Template data — stores per-trip data for WorkProfile-based templates
   templateData?: TemplateData;
 }
