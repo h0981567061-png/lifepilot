@@ -122,10 +122,25 @@ export function CalendarPage({
   const [selectedKey, setSelectedKey] = useState<string>(todayKey);
   const [financeEntries]              = useState<FinanceEntry[]>(() => loadFinanceEntries());
 
-  // ── Derived: date → Reminder[] map ────────────────────────────────────────
+  // ── Derived: date → Reminder[] map (range reminders expand to every day) ─────
   const dateMap = useMemo(() => {
     const map: Record<string, Reminder[]> = {};
     for (const r of reminders) {
+      if (r.dateMode === "range" && r.endDate) {
+        const startKey = reminderDateKey(r.date);
+        const endKey   = reminderDateKey(r.endDate);
+        if (startKey && endKey) {
+          const cur = new Date(startKey + "T00:00:00");
+          const end = new Date(endKey   + "T00:00:00");
+          while (cur <= end) {
+            const key = toKey(cur);
+            if (!map[key]) map[key] = [];
+            if (!map[key].find((x) => x.id === r.id)) map[key].push(r);
+            cur.setDate(cur.getDate() + 1);
+          }
+          continue;
+        }
+      }
       const key = reminderDateKey(r.date);
       if (!key) continue;
       if (!map[key]) map[key] = [];

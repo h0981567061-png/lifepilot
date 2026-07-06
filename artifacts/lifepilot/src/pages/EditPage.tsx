@@ -555,6 +555,8 @@ export function EditPage({
   // ── Common ──────────────────────────────────────────────────────────────────
   const [title,     setTitle]     = useState(reminder.title);
   const [date,      setDate]      = useState(normalizeDate(reminder.date));
+  const [dateMode,  setDateMode]  = useState<"single" | "range">(reminder.dateMode ?? "single");
+  const [endDate,   setEndDate]   = useState(reminder.endDate ?? "");
   const [timeMode,  setTimeMode]  = useState<TimeMode>(deriveTimeMode(reminder));
   const [startTime, setStartTime] = useState(reminder.startTime ?? "");
   const [endTime,   setEndTime]   = useState(reminder.endTime ?? "");
@@ -844,8 +846,10 @@ export function EditPage({
 
     onSave({
       title,
-      date:    isPayment ? "" : date,
-      dueDate: isPayment ? (paymentDueDate || firstPayable?.dueDate || undefined) : undefined,
+      date:     isPayment ? "" : date,
+      dateMode: (!isPayment && dateMode === "range") ? "range" : undefined,
+      endDate:  (!isPayment && dateMode === "range" && endDate) ? endDate : undefined,
+      dueDate:  isPayment ? (paymentDueDate || firstPayable?.dueDate || undefined) : undefined,
       startTime: timeMode !== "allday" ? startTime : "",
       endTime:   timeMode === "range"  ? endTime   : "",
       allDay:    timeMode === "allday",
@@ -921,9 +925,32 @@ export function EditPage({
 
       {!isPending && !isPayment && (
         <FieldRow label="日期">
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
-            className="w-full bg-transparent text-sm text-white focus:outline-none"
-            style={{ colorScheme: "dark" }} />
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              {(["single", "range"] as const).map((m) => (
+                <button key={m} type="button"
+                  onClick={() => setDateMode(m)}
+                  className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
+                    dateMode === m
+                      ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
+                      : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
+                  }`}>
+                  {m === "single" ? "單日" : "日期區間"}
+                </button>
+              ))}
+            </div>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+              className="w-full bg-transparent text-sm text-white focus:outline-none"
+              style={{ colorScheme: "dark" }} />
+            {dateMode === "range" && (
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 text-xs shrink-0">～ 結束</span>
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+                  className="flex-1 bg-transparent text-sm text-white focus:outline-none"
+                  style={{ colorScheme: "dark" }} />
+              </div>
+            )}
+          </div>
         </FieldRow>
       )}
 

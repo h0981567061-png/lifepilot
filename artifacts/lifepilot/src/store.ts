@@ -48,7 +48,9 @@ export interface Reminder {
   id: string;
   type: ReminderType;
   title: string;
-  date: string;
+  date: string;      // YYYY-MM-DD; for range this is the startDate
+  dateMode?: "single" | "range"; // omitted = "single" (backward compat)
+  endDate?: string;  // YYYY-MM-DD; only when dateMode="range"
   startTime: string;
   endTime: string;
   allDay?: boolean;

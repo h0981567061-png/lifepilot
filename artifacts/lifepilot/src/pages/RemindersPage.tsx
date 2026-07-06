@@ -28,9 +28,10 @@ function displayDate(dateStr: string): string {
   return dateStr;
 }
 
-function isOverdue(dateStr: string, completed: boolean): boolean {
+function isOverdue(dateStr: string, completed: boolean, endDateStr?: string): boolean {
   if (completed || !dateStr) return false;
-  const d = parseReminderDate(dateStr);
+  const effectiveStr = endDateStr || dateStr;
+  const d = parseReminderDate(effectiveStr);
   if (!d) return false;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   d.setHours(0, 0, 0, 0);
@@ -39,16 +40,33 @@ function isOverdue(dateStr: string, completed: boolean): boolean {
 
 type DateGroup = "overdue" | "today" | "tomorrow" | "this-week" | "later" | "no-date";
 
+const MS_DAY = 86_400_000;
+
 function getDateGroup(r: Reminder): DateGroup {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+
+  if (r.dateMode === "range" && r.endDate) {
+    const startD = parseReminderDate(r.date);
+    const endD   = parseReminderDate(r.endDate);
+    if (!startD) return "no-date";
+    startD.setHours(0, 0, 0, 0);
+    if (endD) endD.setHours(0, 0, 0, 0);
+    if (endD && endD.getTime() < today.getTime()) return "overdue";
+    if (startD.getTime() <= today.getTime()) return "today";
+    const diff = startD.getTime() - today.getTime();
+    if (diff === MS_DAY)          return "tomorrow";
+    if (diff <= 7 * MS_DAY)       return "this-week";
+    return "later";
+  }
+
   const date = parseReminderDate(r.date);
   if (!date) return "no-date";
-  const today = new Date(); today.setHours(0, 0, 0, 0);
   const d = new Date(date); d.setHours(0, 0, 0, 0);
   const diff = d.getTime() - today.getTime();
-  if (diff < 0)                     return "overdue";
-  if (diff === 0)                   return "today";
-  if (diff === 86_400_000)          return "tomorrow";
-  if (diff <= 7 * 86_400_000)       return "this-week";
+  if (diff < 0)               return "overdue";
+  if (diff === 0)             return "today";
+  if (diff === MS_DAY)        return "tomorrow";
+  if (diff <= 7 * MS_DAY)     return "this-week";
   return "later";
 }
 
@@ -341,7 +359,10 @@ function ReminderCard({
   linkedEntries: FinanceEntry[];
 }) {
   const badge    = TYPE_BADGE[reminder.type] ?? TYPE_BADGE.Pending;
-  const overdue  = isOverdue(reminder.date, reminder.completed);
+  const overdue  = isOverdue(
+    reminder.date, reminder.completed,
+    reminder.dateMode === "range" ? reminder.endDate : undefined
+  );
   const isFinance = FINANCE_TYPES.includes(reminder.type);
 
   return (
@@ -412,7 +433,11 @@ function ReminderCard({
 
         {/* Meta row: date / time / location */}
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500 mb-1">
-          {reminder.date && <span>{displayDate(reminder.date)}</span>}
+          {reminder.date && (
+            reminder.dateMode === "range" && reminder.endDate
+              ? <span>{displayDate(reminder.date)} ～ {displayDate(reminder.endDate)}</span>
+              : <span>{displayDate(reminder.date)}</span>
+          )}
           {reminder.allDay && !reminder.startTime
             ? <span className="text-blue-400/80">全天</span>
             : <>
@@ -500,7 +525,9 @@ export function RemindersPage({
   // ── Derived ────────────────────────────────────────────────────────────────
 
   const activeCount  = effectiveReminders.filter((r) => !r.completed).length;
-  const overdueCount = effectiveReminders.filter((r) => isOverdue(r.date, r.completed)).length;
+  const overdueCount = effectiveReminders.filter((r) =>
+    isOverdue(r.date, r.completed, r.dateMode === "range" ? r.endDate : undefined)
+  ).length;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

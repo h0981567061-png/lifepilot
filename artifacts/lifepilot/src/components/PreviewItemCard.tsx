@@ -610,13 +610,40 @@ export function PreviewItemCard({
         {/* Date (Payment has its own date row inside TypeSpecificEditor) */}
         {draft.type !== "Payment" && (
           <FormRow label="日期">
-            <input
-              type="date"
-              value={normalizeDate(draft.date)}
-              onChange={(e) => upd({ date: e.target.value })}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
-              style={{ colorScheme: "dark" }}
-            />
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                {(["single", "range"] as const).map((m) => (
+                  <button key={m} type="button"
+                    onClick={() => upd({ dateMode: m, ...(m === "single" ? { endDate: "" } : {}) })}
+                    className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
+                      (draft.dateMode ?? "single") === m
+                        ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
+                        : "bg-white/5 text-gray-400 border-white/10 hover:border-white/25"
+                    }`}>
+                    {m === "single" ? "單日" : "日期區間"}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="date"
+                value={normalizeDate(draft.date)}
+                onChange={(e) => upd({ date: e.target.value })}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
+                style={{ colorScheme: "dark" }}
+              />
+              {(draft.dateMode ?? "single") === "range" && (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 text-xs shrink-0">～ 結束</span>
+                  <input
+                    type="date"
+                    value={normalizeDate(draft.endDate ?? "")}
+                    onChange={(e) => upd({ endDate: e.target.value })}
+                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
+                    style={{ colorScheme: "dark" }}
+                  />
+                </div>
+              )}
+            </div>
           </FormRow>
         )}
 

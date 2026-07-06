@@ -40,6 +40,9 @@ export interface AIEvent {
   orderCodes?: string[] | null;    // 訂單識別碼、授權碼等
   paymentMethod?: string | null;   // 付款方式
   paymentCondition?: string | null; // 付款條件
+  // ── Date range ─────────────────────────────────────────────────────────
+  dateMode?: "single" | "range" | null;
+  endDate?: string | null; // M/D format; only when dateMode="range"
 }
 
 export interface AIParseResult {

@@ -87,7 +87,9 @@ export interface PreviewItem {
   category: string;
   // Common fields
   title: string;
-  date: string;       // YYYY-MM-DD; for Payment this doubles as dueDate
+  date: string;       // YYYY-MM-DD; for Payment this doubles as dueDate; for range = startDate
+  dateMode: "single" | "range";
+  endDate: string;    // YYYY-MM-DD; only when dateMode="range", else ""
   startTime: string;  // HH:MM
   endTime: string;    // HH:MM
   allDay: boolean;
@@ -135,6 +137,8 @@ export function emptyPreviewItem(type: AllType = "General"): PreviewItem {
     category: "",
     title: "",
     date: "",
+    dateMode: "single",
+    endDate: "",
     startTime: "",
     endTime: "",
     location: "",

@@ -955,12 +955,26 @@ export default function App() {
       }
 
       // ── Base PreviewItem (common to all types) ──────────────────────────────
+      const _startDateNorm = normalizeDate(e.date ?? "");
+      const _endDateNorm   = (e.dateMode === "range" && e.endDate)
+        ? (() => {
+            const n = normalizeDate(e.endDate ?? "");
+            if (n && _startDateNorm && n < _startDateNorm) {
+              const p = n.split("-");
+              return `${parseInt(p[0]) + 1}-${p[1]}-${p[2]}`;
+            }
+            return n;
+          })()
+        : "";
+
       const item: PreviewItem = {
         ...emptyPreviewItem(type),
         type,
         category: e.category ?? "",
         title: e.title ?? "",
-        date: normalizeDate(e.date ?? ""),
+        date: _startDateNorm,
+        dateMode: e.dateMode === "range" ? "range" : "single",
+        endDate: _endDateNorm,
         startTime: normalizeTime(e.startTime ?? ""),
         endTime: normalizeTime(e.endTime ?? ""),
         allDay: !e.startTime,
@@ -1187,6 +1201,8 @@ export default function App() {
       createdAt: now,
       title: item.title || TYPE_LABEL[item.type] || "事項",
       date: item.date,
+      dateMode: item.dateMode === "range" ? "range" : undefined,
+      endDate:  (item.dateMode === "range" && item.endDate) ? item.endDate : undefined,
       startTime: item.allDay ? "" : item.startTime,
       endTime:   item.allDay ? "" : item.endTime,
       allDay: item.allDay,
