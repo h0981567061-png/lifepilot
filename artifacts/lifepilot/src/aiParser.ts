@@ -33,6 +33,13 @@ export interface AIEvent {
   passengerCount?: number | null;  // 乘客人數（整數）
   luggage?: string | null;         // 行李描述
   destination?: string | null;     // 目的地地址
+  // ── Airport Transfer driver / dispatch fields ────────────────────────────
+  driverName?: string | null;      // 司機姓名（工作人員）
+  driverPhone?: string | null;     // 司機電話
+  vehiclePlate?: string | null;    // 車牌號碼
+  orderCodes?: string[] | null;    // 訂單識別碼、授權碼等
+  paymentMethod?: string | null;   // 付款方式
+  paymentCondition?: string | null; // 付款條件
 }
 
 export interface AIParseResult {

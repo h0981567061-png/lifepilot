@@ -226,6 +226,146 @@ export function AirportTransferTemplateFields({ value, onChange }: Props) {
           placeholder="如 2 大 1 小"
         />
       </div>
+
+      {/* ── Driver / Dispatch section ───────────────────────────────────── */}
+      <div className="pt-1">
+        <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-3">
+          司機 / 調度資訊
+        </p>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs text-gray-500 mb-1.5 font-medium">司機姓名</p>
+              <TInput
+                value={value.driverName ?? ""}
+                onChange={(v) => upd({ driverName: v })}
+                placeholder="司機姓名"
+              />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 mb-1.5 font-medium">司機電話</p>
+              <TInput
+                value={value.driverPhone ?? ""}
+                onChange={(v) => upd({ driverPhone: v })}
+                placeholder="司機電話"
+                type="tel"
+              />
+            </div>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1.5 font-medium">車牌號碼</p>
+            <TInput
+              value={value.vehiclePlate ?? ""}
+              onChange={(v) => upd({ vehiclePlate: v })}
+              placeholder="如 RFH-7077"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Order codes ─────────────────────────────────────────────────── */}
+      <OrderCodesField
+        codes={value.orderCodes ?? []}
+        onChange={(codes) => upd({ orderCodes: codes })}
+      />
+
+      {/* ── Payment ─────────────────────────────────────────────────────── */}
+      <div className="pt-1">
+        <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-3">
+          付款資訊
+        </p>
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs text-gray-500 mb-1.5 font-medium">付款方式</p>
+            <TInput
+              value={value.paymentMethod ?? ""}
+              onChange={(v) => upd({ paymentMethod: v })}
+              placeholder="如 信用卡、現金、轉帳"
+            />
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1.5 font-medium">付款條件</p>
+            <textarea
+              value={value.paymentCondition ?? ""}
+              onChange={(e) => upd({ paymentCondition: e.target.value })}
+              placeholder="如 不簽不收，客下後下週四轉帳"
+              rows={2}
+              className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/60 transition-colors resize-none"
+            />
+          </div>
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+// ─── OrderCodesField ──────────────────────────────────────────────────────────
+
+function OrderCodesField({
+  codes,
+  onChange,
+}: {
+  codes: string[];
+  onChange: (codes: string[]) => void;
+}) {
+  const [newCode, setNewCode] = useState("");
+
+  function addCode() {
+    const v = newCode.trim().toUpperCase();
+    if (!v || codes.includes(v)) return;
+    onChange([...codes, v]);
+    setNewCode("");
+  }
+
+  function removeCode(i: number) {
+    onChange(codes.filter((_, idx) => idx !== i));
+  }
+
+  return (
+    <div>
+      <p className="text-xs text-gray-500 mb-2 font-medium">訂單識別碼</p>
+      {codes.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {codes.map((code, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/8 border border-white/15 text-xs font-mono text-gray-300"
+            >
+              {code}
+              <button
+                type="button"
+                onClick={() => removeCode(i)}
+                className="text-gray-600 hover:text-rose-400 transition-colors leading-none ml-0.5"
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newCode}
+          onChange={(e) => setNewCode(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addCode();
+            }
+          }}
+          placeholder="輸入識別碼，Enter 新增"
+          className="flex-1 min-w-0 bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/60 font-mono"
+        />
+        <button
+          type="button"
+          onClick={addCode}
+          className="shrink-0 px-3 py-2 rounded-xl text-xs text-blue-400 hover:text-blue-300 border border-blue-500/20 hover:border-blue-500/40 transition-colors"
+        >
+          ＋ 新增
+        </button>
+      </div>
     </div>
   );
 }

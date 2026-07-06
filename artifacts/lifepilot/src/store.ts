@@ -109,6 +109,13 @@ export interface AirportTransferTemplateData {
   passengerPhone?: string;
   passengerCount?: number;
   luggage?: string;
+  // Driver / dispatch fields (per-trip, set by AI or user)
+  driverName?: string;
+  driverPhone?: string;
+  vehiclePlate?: string;
+  orderCodes?: string[];      // e.g. ["AR87260623601O", "AB8830"]
+  paymentMethod?: string;     // e.g. "信用卡"
+  paymentCondition?: string;  // e.g. "不簽不收，客下後下週四轉帳"
 }
 
 export interface TemplateData {

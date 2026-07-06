@@ -27,6 +27,9 @@ import {
   saveFinanceEntries,
   type FinanceEntry,
 } from "./financeStore";
+import {
+  loadWorkProfiles,
+} from "./workProfileStore";
 
 // ─── Course parser types & helpers ───────────────────────────────────────────
 
@@ -915,6 +918,19 @@ export default function App() {
     setPreviewItems([]);
   }
 
+  // ── Work profile auto-matching (Layer 2) ──────────────────────────────────
+  // Returns the ID of the single enabled WorkProfile that matches the given
+  // item type. Returns undefined if 0 or 2+ profiles match (avoid guessing).
+  // Call this AFTER AI parsing — never locks the user's manual choice.
+  function autoMatchWorkId(itemType: string): string | undefined {
+    if (itemType !== "Airport Transfer") return undefined;
+    const profiles = loadWorkProfiles();
+    const matches = profiles.filter(
+      (p) => p.enabled && p.templateType === "airport_transfer",
+    );
+    return matches.length === 1 ? matches[0].id : undefined;
+  }
+
   // ── Map AI events → PreviewItem[] ─────────────────────────────────────────
   function mapAIEvents(aiEvents: AIEvent[]): {
     previewItems: PreviewItem[];
@@ -974,23 +990,40 @@ export default function App() {
             : "",
       };
 
-      // ── Airport Transfer: templateData + receivable financial item ───────────
+      // ── Airport Transfer: templateData + work matching + receivable item ──────
       if (type === "Airport Transfer") {
-        // Build templateData.airportTransfer from passenger-specific fields
+        // Layer 1: Build templateData.airportTransfer from all structured fields
         const atd: AirportTransferTemplateData = {};
+        // Passenger
         if (e.passengerName)  atd.passengerName  = e.passengerName;
         if (e.passengerPhone) atd.passengerPhone = e.passengerPhone;
         if (typeof e.passengerCount === "number" && e.passengerCount > 0)
           atd.passengerCount = e.passengerCount;
-        if (e.luggage)      atd.luggage      = e.luggage;
-        if (e.destination)  atd.destination  = e.destination;
+        if (e.luggage)      atd.luggage       = e.luggage;
+        // Route
+        if (e.destination)  atd.destination   = e.destination;
         if (e.location)     atd.pickupLocation = e.location;
-        if (e.flightNumber) atd.flightNumber = e.flightNumber;
+        if (e.flightNumber) atd.flightNumber  = e.flightNumber;
+        // Direction
         if (e.transferType === "接機")      atd.transferType = "pickup";
         else if (e.transferType === "送機") atd.transferType = "dropoff";
+        // Driver / dispatch (new — no longer dumped into notes)
+        if (e.driverName)    atd.driverName    = e.driverName;
+        if (e.driverPhone)   atd.driverPhone   = e.driverPhone;
+        if (e.vehiclePlate)  atd.vehiclePlate  = e.vehiclePlate;
+        if (Array.isArray(e.orderCodes) && e.orderCodes.length > 0)
+          atd.orderCodes = e.orderCodes;
+        if (e.paymentMethod)    atd.paymentMethod    = e.paymentMethod;
+        if (e.paymentCondition) atd.paymentCondition = e.paymentCondition;
+
         if (Object.keys(atd).length > 0) {
           item.templateData = { airportTransfer: atd };
         }
+
+        // Layer 2: Auto-match enabled WorkProfile with airport_transfer capability.
+        // If exactly one match → pre-select it. User can still override manually.
+        const matched = autoMatchWorkId(type);
+        if (matched) item.workProfileId = matched;
 
         // Convert future-receivable amount → FinancialItem (type=receivable).
         // Clear item.amount so deriveFinancialItems in EditPage doesn't double-count.
@@ -1027,7 +1060,8 @@ export default function App() {
     let items: PreviewItem[] = [];
 
     switch (detection.type) {
-      case "Airport Transfer":
+      case "Airport Transfer": {
+        const matchedWpId = autoMatchWorkId("Airport Transfer");
         items = parseAirportTransfers(trimmed).map((t) => ({
           ...emptyPreviewItem("Airport Transfer"),
           type: "Airport Transfer" as const,
@@ -1040,8 +1074,10 @@ export default function App() {
           vehicleType: t.vehicle,
           price: t.price,
           notes: t.notes,
+          workProfileId: matchedWpId,
         }));
         break;
+      }
 
       case "Course":
         items = parseEvents(trimmed).map((e) => ({
