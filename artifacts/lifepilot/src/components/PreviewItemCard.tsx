@@ -120,12 +120,15 @@ function AllDayToggle({
 function ItemDisplay({ item }: { item: PreviewItem }) {
   const meta: string[] = [];
 
+  const fmtTime = (start: string, end: string) =>
+    end && end !== start ? `${start} ～ ${end}` : start;
+
   switch (item.type) {
     case "Airport Transfer":
       if (item.transferType) meta.push(item.transferType);
       if (item.flightNumber) meta.push(item.flightNumber);
       if (item.allDay) meta.push("全天");
-      else if (item.startTime) meta.push(normalizeTime(item.startTime));
+      else if (item.startTime) meta.push(fmtTime(normalizeTime(item.startTime), normalizeTime(item.endTime)));
       if (item.district) meta.push(item.district);
       if (item.vehicleType) meta.push(item.vehicleType);
       break;
@@ -135,22 +138,22 @@ function ItemDisplay({ item }: { item: PreviewItem }) {
     case "Income":
       if (item.amount) meta.push(`${item.amount} 元`);
       if (item.source) meta.push(item.source);
-      if (!item.allDay && item.startTime) meta.push(item.startTime);
+      if (!item.allDay && item.startTime) meta.push(fmtTime(item.startTime, item.endTime));
       break;
     case "Expense":
       if (item.amount) meta.push(`${item.amount} 元`);
       if (item.merchant) meta.push(item.merchant);
-      if (!item.allDay && item.startTime) meta.push(item.startTime);
+      if (!item.allDay && item.startTime) meta.push(fmtTime(item.startTime, item.endTime));
       break;
     case "Medical":
       if (item.hospital) meta.push(item.hospital);
       if (item.department) meta.push(item.department);
       if (item.allDay) meta.push("全天");
-      else if (item.startTime) meta.push(item.startTime);
+      else if (item.startTime) meta.push(fmtTime(item.startTime, item.endTime));
       break;
     default:
       if (item.allDay) meta.push("全天");
-      else if (item.startTime) meta.push(item.startTime);
+      else if (item.startTime) meta.push(fmtTime(item.startTime, item.endTime));
       if (item.location) meta.push(item.location);
   }
 
@@ -192,7 +195,9 @@ function ItemDisplay({ item }: { item: PreviewItem }) {
           </span>
         ) : item.type !== "Payment" && item.date ? (
           <span className="text-xs text-gray-500">
-            {item.date.replace(/-/g, "/")}
+            {item.dateMode === "range" && item.endDate
+              ? `${item.date.replace(/-/g, "/")} ～ ${item.endDate.replace(/-/g, "/")}`
+              : item.date.replace(/-/g, "/")}
           </span>
         ) : null}
 
