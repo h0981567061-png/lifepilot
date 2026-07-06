@@ -3,6 +3,7 @@ import { type Reminder, type ReminderType, type FinancialItem, updateReminder } 
 import { getWorkProfileById } from "../workProfileStore";
 import { QuickFinanceModal } from "../components/QuickFinanceModal";
 import { type FinanceEntry, loadFinanceEntries, fmtCurrency } from "../financeStore";
+import { CalendarPage } from "./CalendarPage";
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -468,12 +469,15 @@ export function RemindersPage({
   onToggleComplete,
   onDelete,
   onEdit,
+  onNewWithDate,
 }: {
   reminders: Reminder[];
   onToggleComplete: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
+  onNewWithDate?: (date: string) => void;
 }) {
+  const [viewMode,       setViewMode]       = useState<"list" | "calendar">("list");
   const [search,         setSearch]         = useState("");
   const [filterTab,      setFilterTab]      = useState<FilterTab>("all");
   const [showCompleted,  setShowCompleted]  = useState(false);
@@ -554,13 +558,67 @@ export function RemindersPage({
     onDelete(id);
   }
 
+  // ── Shared view toggle UI ─────────────────────────────────────────────────
+  const ViewToggle = (
+    <div className="flex gap-0.5 p-0.5 rounded-lg bg-white/5 border border-white/8 shrink-0">
+      <button
+        type="button"
+        onClick={() => setViewMode("list")}
+        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+          viewMode === "list" ? "bg-white/15 text-white" : "text-gray-500 hover:text-gray-300"
+        }`}
+      >
+        列表
+      </button>
+      <button
+        type="button"
+        onClick={() => setViewMode("calendar")}
+        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+          viewMode === "calendar" ? "bg-white/15 text-white" : "text-gray-500 hover:text-gray-300"
+        }`}
+      >
+        月曆
+      </button>
+    </div>
+  );
+
+  // ── Calendar view ─────────────────────────────────────────────────────────
+  if (viewMode === "calendar") {
+    return (
+      <>
+        <div className="max-w-2xl mx-auto px-6 pt-10 pb-4">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-3xl font-bold tracking-tight text-white">提醒事項</h1>
+            {ViewToggle}
+          </div>
+        </div>
+        <CalendarPage
+          reminders={effectiveReminders}
+          onEdit={onEdit}
+          onNewWithDate={onNewWithDate ?? (() => {})}
+        />
+        {quickReminder && (
+          <QuickFinanceModal
+            reminder={quickReminder}
+            onSave={handleFinanceSave}
+            onCancel={() => setQuickId(null)}
+            onReminderUpdated={handleReminderUpdated}
+          />
+        )}
+      </>
+    );
+  }
+
   // ── Empty state ────────────────────────────────────────────────────────────
   if (reminders.length === 0) {
     return (
       <div className="max-w-2xl mx-auto px-6 py-14">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight text-white mb-1">提醒事項</h1>
-          <p className="text-gray-500 text-sm">0 筆</p>
+        <div className="mb-8 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-white mb-1">提醒事項</h1>
+            <p className="text-gray-500 text-sm">0 筆</p>
+          </div>
+          {ViewToggle}
         </div>
         <div className="flex flex-col items-center justify-center py-20 gap-4">
           <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
@@ -579,7 +637,7 @@ export function RemindersPage({
     <>
       <div className="max-w-2xl mx-auto px-6 py-10 pb-28">
         {/* Header */}
-        <div className="mb-5 flex items-end justify-between">
+        <div className="mb-5 flex items-start justify-between gap-3">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-white mb-1">提醒事項</h1>
             <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -589,17 +647,20 @@ export function RemindersPage({
               )}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowCompleted((v) => !v)}
-            className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${
-              showCompleted
-                ? "bg-white/10 border-white/20 text-white"
-                : "bg-white/5 border-white/10 text-gray-500 hover:text-gray-300"
-            }`}
-          >
-            {showCompleted ? "隱藏已完成" : "顯示已完成"}
-          </button>
+          <div className="flex flex-col items-end gap-2">
+            {ViewToggle}
+            <button
+              type="button"
+              onClick={() => setShowCompleted((v) => !v)}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${
+                showCompleted
+                  ? "bg-white/10 border-white/20 text-white"
+                  : "bg-white/5 border-white/10 text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              {showCompleted ? "隱藏已完成" : "顯示已完成"}
+            </button>
+          </div>
         </div>
 
         {/* Search bar */}

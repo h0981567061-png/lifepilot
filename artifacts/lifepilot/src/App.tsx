@@ -1204,6 +1204,15 @@ export default function App() {
     setAddMode("manual");
   }
 
+  function handleManualNewWithDate(date: string) {
+    const item = { ...emptyPreviewItem("General"), date };
+    setPreviewItems([item]);
+    setAnalyzed(true);
+    setEditingId(item.id);
+    setAddMode("manual");
+    setActivePage("add");
+  }
+
   function handleGoBackToSelect() {
     if (addMode === "manual") {
       setPreviewItems([]);
@@ -1495,6 +1504,7 @@ export default function App() {
           onDelete={handleDeleteReminder}
           onToggleComplete={handleToggleReminderComplete}
           onEdit={handleOpenEdit}
+          onNewWithDate={handleManualNewWithDate}
         />
       )}
       {activePage === "finance" && (
