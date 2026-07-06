@@ -834,8 +834,8 @@ export default function App() {
   const [activePage, setActivePage] = useState<PageId>("add");
   const [showCategoryMgmt, setShowCategoryMgmt] = useState(false);
   const [showWorkProfiles, setShowWorkProfiles] = useState(false);
-  // "select" = dual-entry choice screen, "ai" = text-paste flow, "manual" = blank draft flow
-  const [addMode, setAddMode] = useState<"select" | "ai" | "manual">("select");
+  // "select" = main add screen (textarea + AI + 手動入口), "manual" = blank draft flow
+  const [addMode, setAddMode] = useState<"select" | "manual">("select");
   const [savedReminders, setSavedReminders] = useState<Reminder[]>(() => loadReminders());
   const [bulkDatePickerOpen, setBulkDatePickerOpen] = useState(false);
   const [bulkDateValue, setBulkDateValue] = useState("");
@@ -1245,42 +1245,8 @@ export default function App() {
       {activePage === "add" && (
       <div className="max-w-2xl mx-auto px-6 py-14">
 
-        {/* ── 選擇新增方式 ─────────────────────────────────────────────────── */}
-        {addMode === "select" && (
-          <>
-            <div className="mb-10">
-              <h1 className="text-5xl font-bold tracking-tight text-white mb-2">LifePilot</h1>
-              <p className="text-gray-400 text-base">選擇新增事項的方式</p>
-            </div>
-            <div className="flex flex-col gap-4">
-              {/* AI 智慧輸入 */}
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-                <p className="text-base font-semibold text-white mb-1">AI 智慧輸入</p>
-                <p className="text-sm text-gray-500 mb-4">貼上文字，由 AI 協助整理事項內容</p>
-                <button
-                  onClick={() => setAddMode("ai")}
-                  className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold text-base transition-all duration-150 shadow-lg shadow-blue-600/20"
-                >
-                  AI 智慧輸入
-                </button>
-              </div>
-              {/* 手動新增 */}
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-                <p className="text-base font-semibold text-white mb-1">手動新增</p>
-                <p className="text-sm text-gray-500 mb-4">自行填寫事項內容</p>
-                <button
-                  onClick={handleManualNew}
-                  className="w-full py-3.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 active:bg-white/15 text-white font-semibold text-base transition-all duration-150"
-                >
-                  ＋ 手動新增
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* ── 返回按鈕（AI / 手動 模式共用）──────────────────────────────── */}
-        {addMode !== "select" && (
+        {/* ── 手動新增：返回按鈕 ──────────────────────────────────────────── */}
+        {addMode === "manual" && (
           <button
             onClick={handleGoBackToSelect}
             className="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1 mb-8"
@@ -1292,13 +1258,23 @@ export default function App() {
           </button>
         )}
 
-        {/* ── AI 智慧輸入：標題 + 文字區 + 分析按鈕 ───────────────────────── */}
-        {addMode === "ai" && (
+        {/* ── 標題區 ──────────────────────────────────────────────────────── */}
+        {addMode === "select" && (
+          <div className="mb-10">
+            <h1 className="text-5xl font-bold tracking-tight text-white mb-2">LifePilot</h1>
+            <p className="text-gray-400 text-base">貼上訊息，AI 幫你整理成提醒事項</p>
+          </div>
+        )}
+        {addMode === "manual" && (
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-white mb-1">手動新增事項</h1>
+            <p className="text-sm text-gray-500">填寫事項資料後點擊儲存</p>
+          </div>
+        )}
+
+        {/* ── AI 文字輸入區（select 模式） ────────────────────────────────── */}
+        {addMode === "select" && (
           <>
-            <div className="mb-10">
-              <h1 className="text-5xl font-bold tracking-tight text-white mb-2">LifePilot</h1>
-              <p className="text-gray-400 text-base">貼上訊息，AI 幫你整理成提醒事項</p>
-            </div>
             <div className="mb-2">
               <textarea
                 value={message}
@@ -1316,26 +1292,34 @@ export default function App() {
             <button
               onClick={handleAnalyze}
               disabled={aiLoading || !message.trim()}
-              className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:bg-blue-600/40 disabled:cursor-not-allowed text-white font-semibold text-base transition-all duration-150 shadow-lg shadow-blue-600/20 mt-4 mb-10"
+              className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:bg-blue-600/40 disabled:cursor-not-allowed text-white font-semibold text-base transition-all duration-150 shadow-lg shadow-blue-600/20 mt-4 mb-6"
             >
               {aiLoading ? "正在整理…" : "開始整理"}
             </button>
+            {/* 手動新增入口（未分析時顯示） */}
+            {!analyzed && (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-white/8" />
+                  <span className="text-xs text-gray-600">或</span>
+                  <div className="flex-1 h-px bg-white/8" />
+                </div>
+                <button
+                  onClick={handleManualNew}
+                  className="w-full py-3 rounded-xl border border-white/12 bg-white/[0.03] hover:bg-white/[0.06] text-gray-300 hover:text-white font-medium text-sm transition-all duration-150"
+                >
+                  ＋ 手動新增
+                </button>
+              </div>
+            )}
           </>
         )}
 
-        {/* ── 手動新增：標題 ───────────────────────────────────────────────── */}
-        {addMode === "manual" && (
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold text-white mb-1">手動新增事項</h1>
-            <p className="text-sm text-gray-500">填寫事項資料後點擊儲存</p>
-          </div>
-        )}
-
-        {/* ── 共用預覽區：AI 分析完成 或 手動新增進入後顯示 ────────────────── */}
-        {addMode !== "select" && analyzed && (
+        {/* ── 共用預覽區：AI 分析完成 或 手動新增 ────────────────────────── */}
+        {analyzed && (
           <>
             {/* AI only：偵測摘要 */}
-            {addMode === "ai" && detectionResult && (() => {
+            {addMode === "select" && detectionResult && (() => {
               const typeSet = new Set(previewItems.map((i) => i.type));
               const multiTypes = typeSet.size;
               return (
@@ -1379,7 +1363,7 @@ export default function App() {
                 </div>
 
                 {/* AI only：批次套用日期 */}
-                {addMode === "ai" && (
+                {addMode === "select" && (
                   <div className="mb-4">
                     {!bulkDatePickerOpen ? (
                       <button
@@ -1495,7 +1479,7 @@ export default function App() {
                 )}
               </>
             ) : (
-              addMode === "ai" && (
+              addMode === "select" && (
                 <p className="text-sm text-gray-500 mt-2">
                   未找到可解析的事項，請確認訊息內容後再試。
                 </p>
