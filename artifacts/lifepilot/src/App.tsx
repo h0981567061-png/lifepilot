@@ -14,6 +14,7 @@ import {
   type AirportTransferTemplateData,
   type FinancialItem,
 } from "./store";
+import { HomePage }               from "./pages/HomePage";
 import { RemindersPage }          from "./pages/RemindersPage";
 import { FinancePage }             from "./pages/FinancePage";
 import { MyPage }                  from "./pages/MyPage";
@@ -772,7 +773,7 @@ function accentCheckbox(color: string) {
 
 // ─── Bottom navigation ────────────────────────────────────────────────────────
 
-type PageId = "add" | "reminders" | "finance" | "my";
+type PageId = "home" | "add" | "reminders" | "finance" | "my";
 
 function BottomNav({
   activePage,
@@ -784,8 +785,9 @@ function BottomNav({
   remindersCount: number;
 }) {
   const tabs: { id: PageId; label: string; badge?: number }[] = [
+    { id: "home",      label: "首頁" },
     { id: "add",       label: "新增" },
-    { id: "reminders", label: "提醒事項", badge: remindersCount },
+    { id: "reminders", label: "提醒", badge: remindersCount },
     { id: "finance",   label: "收支" },
     { id: "my",        label: "我的" },
   ];
@@ -831,7 +833,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSource, setAiSource] = useState<"ai" | "rule" | null>(null);
-  const [activePage, setActivePage] = useState<PageId>("add");
+  const [activePage, setActivePage] = useState<PageId>("home");
   const [showCategoryMgmt, setShowCategoryMgmt] = useState(false);
   const [showWorkProfiles, setShowWorkProfiles] = useState(false);
   // "select" = main add screen (textarea + AI + 手動入口), "manual" = blank draft flow
@@ -1497,6 +1499,15 @@ export default function App() {
           </>
         )}
       </div>
+      )}
+      {activePage === "home" && (
+        <HomePage
+          reminders={savedReminders}
+          onEditReminder={handleOpenEdit}
+          onNavigateToAdd={() => setActivePage("add")}
+          onNavigateToReminders={() => setActivePage("reminders")}
+          onNavigateToFinance={() => setActivePage("finance")}
+        />
       )}
       {activePage === "reminders" && (
         <RemindersPage
