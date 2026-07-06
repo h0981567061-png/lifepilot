@@ -558,25 +558,36 @@ export function RemindersPage({
     onDelete(id);
   }
 
-  // ── Shared view toggle UI ─────────────────────────────────────────────────
+  // ── Large segmented control (full-width, 44–48 px tall) ──────────────────
   const ViewToggle = (
-    <div className="flex gap-0.5 p-0.5 rounded-lg bg-white/5 border border-white/8 shrink-0">
+    <div className="flex p-1 rounded-xl bg-white/5 border border-white/10 mb-4">
       <button
         type="button"
         onClick={() => setViewMode("list")}
-        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-          viewMode === "list" ? "bg-white/15 text-white" : "text-gray-500 hover:text-gray-300"
+        className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 ${
+          viewMode === "list"
+            ? "bg-white text-gray-950 shadow"
+            : "text-gray-500 hover:text-gray-300 active:bg-white/5"
         }`}
       >
+        <svg className="w-4 h-4 shrink-0" viewBox="0 0 16 16" fill="none">
+          <path d="M2 4h12M2 8h12M2 12h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
         列表
       </button>
       <button
         type="button"
         onClick={() => setViewMode("calendar")}
-        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-          viewMode === "calendar" ? "bg-white/15 text-white" : "text-gray-500 hover:text-gray-300"
+        className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 ${
+          viewMode === "calendar"
+            ? "bg-white text-gray-950 shadow"
+            : "text-gray-500 hover:text-gray-300 active:bg-white/5"
         }`}
       >
+        <svg className="w-4 h-4 shrink-0" viewBox="0 0 16 16" fill="none">
+          <rect x="2" y="3" width="12" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
+          <path d="M5 2v2M11 2v2M2 7h12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+        </svg>
         月曆
       </button>
     </div>
@@ -586,11 +597,9 @@ export function RemindersPage({
   if (viewMode === "calendar") {
     return (
       <>
-        <div className="max-w-2xl mx-auto px-6 pt-10 pb-4">
-          <div className="flex items-center justify-between gap-3">
-            <h1 className="text-3xl font-bold tracking-tight text-white">提醒事項</h1>
-            {ViewToggle}
-          </div>
+        <div className="max-w-2xl mx-auto px-6 pt-10 pb-2">
+          <h1 className="text-3xl font-bold tracking-tight text-white mb-5">提醒事項</h1>
+          {ViewToggle}
         </div>
         <CalendarPage
           reminders={effectiveReminders}
@@ -613,13 +622,11 @@ export function RemindersPage({
   if (reminders.length === 0) {
     return (
       <div className="max-w-2xl mx-auto px-6 py-14">
-        <div className="mb-8 flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-white mb-1">提醒事項</h1>
-            <p className="text-gray-500 text-sm">0 筆</p>
-          </div>
-          {ViewToggle}
+        <div className="mb-5">
+          <h1 className="text-3xl font-bold tracking-tight text-white mb-1">提醒事項</h1>
+          <p className="text-gray-500 text-sm">0 筆</p>
         </div>
+        {ViewToggle}
         <div className="flex flex-col items-center justify-center py-20 gap-4">
           <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
             <span className="text-2xl text-gray-600">○</span>
@@ -647,21 +654,21 @@ export function RemindersPage({
               )}
             </div>
           </div>
-          <div className="flex flex-col items-end gap-2">
-            {ViewToggle}
-            <button
-              type="button"
-              onClick={() => setShowCompleted((v) => !v)}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${
-                showCompleted
-                  ? "bg-white/10 border-white/20 text-white"
-                  : "bg-white/5 border-white/10 text-gray-500 hover:text-gray-300"
-              }`}
-            >
-              {showCompleted ? "隱藏已完成" : "顯示已完成"}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowCompleted((v) => !v)}
+            className={`shrink-0 text-xs px-3 py-1.5 rounded-lg border transition-all ${
+              showCompleted
+                ? "bg-white/10 border-white/20 text-white"
+                : "bg-white/5 border-white/10 text-gray-500 hover:text-gray-300"
+            }`}
+          >
+            {showCompleted ? "隱藏已完成" : "顯示已完成"}
+          </button>
         </div>
+
+        {/* View mode segmented control */}
+        {ViewToggle}
 
         {/* Search bar */}
         <div className="relative mb-4">
