@@ -6,7 +6,6 @@ import {
   loadFinanceEntries,
   saveFinanceEntries,
   fmtCurrency,
-  fmtDate,
   monthPrefix,
 } from "../financeStore";
 import { FinanceEditor } from "./FinanceEditor";
@@ -20,17 +19,17 @@ interface Props {
   onRemindersChange?: (reminders: Reminder[]) => void;
 }
 
-// ─── Tab config ───────────────────────────────────────────────────────────────
+// ─── Filter type ──────────────────────────────────────────────────────────────
 
-const TABS = [
-  { key: "overview",   label: "總覽" },
-  { key: "receivable", label: "待收" },
-  { key: "payable",    label: "待付" },
+type FilterType = "all" | "income" | "expense" | "receivable" | "payable";
+
+const FILTERS: { key: FilterType; label: string }[] = [
+  { key: "all",        label: "全部" },
   { key: "income",     label: "收入" },
   { key: "expense",    label: "支出" },
-] as const;
-
-type PageTab = (typeof TABS)[number]["key"];
+  { key: "receivable", label: "待收" },
+  { key: "payable",    label: "待付" },
+];
 
 // ─── Derive financial items from a reminder (same logic as EditPage) ──────────
 
@@ -94,12 +93,7 @@ function getPendingItems(
   return reminders
     .flatMap((r) =>
       deriveFinancialItems(r)
-        .filter(
-          (i) =>
-            i.type === type &&
-            !i.completed &&
-            !confirmedIds.has(i.id),
-        )
+        .filter((i) => i.type === type && !i.completed && !confirmedIds.has(i.id))
         .map((i) => ({ item: i, reminder: r })),
     )
     .sort((a, b) => {
@@ -110,63 +104,128 @@ function getPendingItems(
     });
 }
 
+// ─── List item union type ─────────────────────────────────────────────────────
+
+type ListItem =
+  | { kind: "entry";   data: FinanceEntry; sortDate: string }
+  | { kind: "pending"; pendingRef: PendingRef; sortDate: string };
+
+// ─── Date group header formatter ──────────────────────────────────────────────
+
+function fmtGroupDate(dateStr: string): string {
+  if (!dateStr) return "未指定日期";
+  const parts = dateStr.split("-");
+  if (parts.length < 3) return dateStr;
+  return `${Number(parts[1])} 月 ${Number(parts[2])} 日`;
+}
+
 // ─── FinancePage ──────────────────────────────────────────────────────────────
 
 export function FinancePage({ reminders: propReminders = [], onEditReminder, onRemindersChange }: Props) {
-  const todayStr = new Date().toISOString().substring(0, 10);
   const todayDate = new Date();
+  const todayStr  = todayDate.toISOString().substring(0, 10);
 
-  // ── Finance entries state ──────────────────────────────────────────────────
-  const [entries, setEntries] = useState<FinanceEntry[]>(() => loadFinanceEntries());
-
-  // ── Tab state ─────────────────────────────────────────────────────────────
-  const [tab, setTab] = useState<PageTab>("overview");
-
-  // ── Finance Editor state (for Income/Expense add/edit) ────────────────────
+  // ── State ───────────────────────────────────────────────────────────────────
+  const [entries,           setEntries]           = useState<FinanceEntry[]>(() => loadFinanceEntries());
+  const [filterType,        setFilterType]        = useState<FilterType>("all");
   const [editorMode,        setEditorMode]        = useState<"idle" | "add" | "edit">("idle");
   const [editingEntry,      setEditingEntry]      = useState<FinanceEntry | null>(null);
   const [defaultEditorType, setDefaultEditorType] = useState<FinanceType>("Expense");
+  const [year,              setYear]              = useState(todayDate.getFullYear());
+  const [month,             setMonth]             = useState(todayDate.getMonth() + 1);
+  const [confirmingRef,     setConfirmingRef]     = useState<PendingRef | null>(null);
+  const [confirmAmount,     setConfirmAmount]     = useState("");
+  const [confirmDate,       setConfirmDate]       = useState(todayStr);
+  const [confirmNote,       setConfirmNote]       = useState("");
+  const [confirmSubmit,     setConfirmSubmit]     = useState(false);
 
-  // ── Month navigation (for income/expense tabs) ────────────────────────────
-  const [year,  setYear]  = useState(todayDate.getFullYear());
-  const [month, setMonth] = useState(todayDate.getMonth() + 1);
+  // ── Derived data ─────────────────────────────────────────────────────────────
+  const prefix = monthPrefix(year, month);
+  const isThisMonth = year === todayDate.getFullYear() && month === (todayDate.getMonth() + 1);
 
-  // ── Confirm flow state ────────────────────────────────────────────────────
-  const [confirmingRef,  setConfirmingRef]  = useState<PendingRef | null>(null);
-  const [confirmAmount,  setConfirmAmount]  = useState("");
-  const [confirmDate,    setConfirmDate]    = useState(todayStr);
-  const [confirmNote,    setConfirmNote]    = useState("");
-  const [confirmSubmit,  setConfirmSubmit]  = useState(false);
-
-  // ── Derived data ──────────────────────────────────────────────────────────
-  const pendingReceivable = useMemo(
+  const allReceivable = useMemo(
     () => getPendingItems(propReminders, "receivable", entries),
     [propReminders, entries],
   );
-  const pendingPayable = useMemo(
+  const allPayable = useMemo(
     () => getPendingItems(propReminders, "payable", entries),
     [propReminders, entries],
   );
 
-  const receivableTotal = pendingReceivable.reduce((s, r) => s + r.item.amount, 0);
-  const payableTotal    = pendingPayable.reduce((s, r) => s + r.item.amount, 0);
+  const monthIncomeEntries = useMemo(
+    () => entries.filter((e) => e.type === "Income"   && e.date.startsWith(prefix)),
+    [entries, prefix],
+  );
+  const monthExpenseEntries = useMemo(
+    () => entries.filter((e) => e.type === "Expense"  && e.date.startsWith(prefix)),
+    [entries, prefix],
+  );
+  const monthReceivable = useMemo(
+    () => allReceivable.filter((r) => r.item.dueDate?.startsWith(prefix)),
+    [allReceivable, prefix],
+  );
+  const monthPayable = useMemo(
+    () => allPayable.filter((r) => r.item.dueDate?.startsWith(prefix)),
+    [allPayable, prefix],
+  );
 
-  const prefix        = monthPrefix(year, month);
-  const monthEntries  = entries.filter((e) => e.date.startsWith(prefix));
-  const incomeTotal   = monthEntries.filter((e) => e.type === "Income").reduce((s, e) => s + e.amount, 0);
-  const expenseTotal  = monthEntries.filter((e) => e.type === "Expense").reduce((s, e) => s + e.amount, 0);
+  const incomeTotal     = useMemo(() => monthIncomeEntries.reduce((s, e) => s + e.amount, 0),  [monthIncomeEntries]);
+  const expenseTotal    = useMemo(() => monthExpenseEntries.reduce((s, e) => s + e.amount, 0), [monthExpenseEntries]);
+  const balance         = incomeTotal - expenseTotal;
+  const receivableTotal = useMemo(() => monthReceivable.reduce((s, r) => s + r.item.amount, 0), [monthReceivable]);
+  const payableTotal    = useMemo(() => monthPayable.reduce((s, r) => s + r.item.amount, 0),    [monthPayable]);
 
-  // ── Month navigation helpers ───────────────────────────────────────────────
+  // Unified list for selected filter, sorted by date descending
+  const listItems = useMemo((): ListItem[] => {
+    const items: ListItem[] = [];
+    if (filterType === "all" || filterType === "income") {
+      monthIncomeEntries.forEach((e) => items.push({ kind: "entry", data: e, sortDate: e.date }));
+    }
+    if (filterType === "all" || filterType === "expense") {
+      monthExpenseEntries.forEach((e) => items.push({ kind: "entry", data: e, sortDate: e.date }));
+    }
+    if (filterType === "all" || filterType === "receivable") {
+      monthReceivable.forEach((r) =>
+        items.push({ kind: "pending", pendingRef: r, sortDate: r.item.dueDate ?? "" }),
+      );
+    }
+    if (filterType === "all" || filterType === "payable") {
+      monthPayable.forEach((r) =>
+        items.push({ kind: "pending", pendingRef: r, sortDate: r.item.dueDate ?? "" }),
+      );
+    }
+    return items.sort((a, b) => b.sortDate.localeCompare(a.sortDate));
+  }, [filterType, monthIncomeEntries, monthExpenseEntries, monthReceivable, monthPayable]);
+
+  // Group by date key
+  const groupedByDate = useMemo(() => {
+    const map = new Map<string, ListItem[]>();
+    for (const item of listItems) {
+      const key = item.sortDate || "";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(item);
+    }
+    return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [listItems]);
+
+  // ── Month navigation ─────────────────────────────────────────────────────────
   function prevMonth() {
+    setConfirmingRef(null);
     if (month === 1) { setMonth(12); setYear((y) => y - 1); }
     else setMonth((m) => m - 1);
   }
   function nextMonth() {
+    setConfirmingRef(null);
     if (month === 12) { setMonth(1); setYear((y) => y + 1); }
     else setMonth((m) => m + 1);
   }
+  function goToThisMonth() {
+    setConfirmingRef(null);
+    setYear(todayDate.getFullYear());
+    setMonth(todayDate.getMonth() + 1);
+  }
 
-  // ── Finance editor handlers ────────────────────────────────────────────────
+  // ── Finance editor handlers ───────────────────────────────────────────────
   function mutate(fn: (prev: FinanceEntry[]) => FinanceEntry[]) {
     setEntries((prev) => {
       const next = fn(prev);
@@ -192,8 +251,6 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
 
   function handleEditorDelete() {
     if (!editingEntry) return;
-
-    // If linked to a Financial Item via sourceFinancialItemId → restore it to !completed
     if (editingEntry.sourceFinancialItemId && editingEntry.sourceReminderId) {
       const linkedReminder = propReminders.find((r) => r.id === editingEntry.sourceReminderId);
       if (linkedReminder) {
@@ -210,7 +267,6 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
         }
       }
     }
-
     mutate((prev) => prev.filter((e) => e.id !== editingEntry.id));
     setEditorMode("idle");
     setEditingEntry(null);
@@ -227,7 +283,7 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
     setEditorMode("edit");
   }
 
-  // ── Confirm flow handlers ──────────────────────────────────────────────────
+  // ── Confirm flow handlers ─────────────────────────────────────────────────
   function handleStartConfirm(ref: PendingRef) {
     setConfirmingRef(ref);
     setConfirmAmount(String(ref.item.amount));
@@ -239,21 +295,15 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
   function handleConfirm() {
     if (!confirmingRef || confirmSubmit) return;
     const { item, reminder } = confirmingRef;
-
-    // Guard: already confirmed
     if (entries.some((e) => e.sourceFinancialItemId === item.id)) {
       setConfirmingRef(null);
       return;
     }
-
     const amt = parseFloat(confirmAmount.replace(/,/g, ""));
     if (isNaN(amt) || amt <= 0) return;
-
     setConfirmSubmit(true);
-
     const now           = new Date().toISOString();
     const confirmedDate = confirmDate || todayStr;
-
     const entry: FinanceEntry = {
       id: crypto.randomUUID(),
       type: item.type === "receivable" ? "Income" : "Expense",
@@ -267,22 +317,15 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
       sourceReminderId: reminder.id,
       sourceFinancialItemId: item.id,
     };
-
     const allEntries = loadFinanceEntries();
     saveFinanceEntries([...allEntries, entry]);
     setEntries([...allEntries, entry]);
-
-    // Update reminder's financialItems
     const baseItems = reminder.financialItems && reminder.financialItems.length > 0
       ? reminder.financialItems
       : deriveFinancialItems(reminder);
-
     const updatedItems = baseItems.map((i) =>
-      i.id === item.id
-        ? { ...i, completed: true, completedDate: confirmedDate }
-        : i,
+      i.id === item.id ? { ...i, completed: true, completedDate: confirmedDate } : i,
     );
-
     const updated = updateReminder(reminder.id, {
       financialItems: updatedItems,
       financialStatus: undefined,
@@ -290,7 +333,12 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
       financialDueDate: undefined,
     });
     onRemindersChange?.(updated);
-
+    // Navigate to the confirmed entry's month
+    const [ey, em] = confirmedDate.split("-").map(Number);
+    setYear(ey);
+    setMonth(em);
+    // Switch to income/expense filter so user sees the result
+    setFilterType(item.type === "receivable" ? "income" : "expense");
     setConfirmSubmit(false);
     setConfirmingRef(null);
   }
@@ -309,7 +357,7 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
     );
   }
 
-  // ── Shared confirm form renderer ───────────────────────────────────────────
+  // ── Confirm form ──────────────────────────────────────────────────────────
   const canConfirm = parseFloat(confirmAmount.replace(/,/g, "")) > 0;
   const isReceivableConfirm = confirmingRef?.item.type === "receivable";
 
@@ -380,19 +428,22 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
     );
   }
 
+  // ── Add button label ──────────────────────────────────────────────────────
+  const showAddBtn = filterType !== "receivable" && filterType !== "payable";
+  const addBtnType: FinanceType = filterType === "income" ? "Income" : "Expense";
+  const addBtnLabel = filterType === "income" ? "＋ 新增收入" : filterType === "expense" ? "＋ 新增支出" : "＋ 記帳";
+
   // ── Main render ───────────────────────────────────────────────────────────
   return (
-    <div className="max-w-2xl mx-auto px-5 py-8 pb-24">
+    <div className="max-w-2xl mx-auto px-5 py-8 pb-28">
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">收支</h1>
-        </div>
-        {(tab === "income" || tab === "expense" || tab === "overview") && (
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold tracking-tight text-white">收支</h1>
+        {showAddBtn && (
           <button
             type="button"
-            onClick={() => openAdd(tab === "income" ? "Income" : "Expense")}
+            onClick={() => openAdd(addBtnType)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-all shadow-lg shadow-blue-600/20"
           >
             <span className="text-base leading-none">＋</span>
@@ -401,18 +452,96 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
         )}
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-0.5 overflow-x-auto scrollbar-hide mb-6 -mx-1 px-1 pb-0.5">
-        {TABS.map(({ key, label }) => {
-          const isActive = tab === key;
-          const badgeCount =
-            key === "receivable" ? pendingReceivable.length :
-            key === "payable"    ? pendingPayable.length : 0;
+      {/* ── Month navigator ─────────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 mb-5">
+        <button
+          type="button"
+          onClick={prevMonth}
+          aria-label="上個月"
+          className="w-11 h-11 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xl text-gray-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all shrink-0"
+        >
+          ‹
+        </button>
+        <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
+          <span className="text-base font-bold text-white tabular-nums whitespace-nowrap">
+            {year} 年 {month} 月
+          </span>
+          {!isThisMonth && (
+            <button
+              type="button"
+              onClick={goToThisMonth}
+              className="text-xs px-2.5 py-1 rounded-full bg-blue-600/20 border border-blue-500/30 text-blue-300 hover:bg-blue-600/30 transition-colors whitespace-nowrap"
+            >
+              本月
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={nextMonth}
+          aria-label="下個月"
+          className="w-11 h-11 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xl text-gray-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all shrink-0"
+        >
+          ›
+        </button>
+      </div>
+
+      {/* ── Monthly summary ─────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-2.5 mb-5">
+        {/* 收入 */}
+        <div className="rounded-2xl border border-teal-500/20 bg-teal-500/[0.06] px-4 py-3.5">
+          <p className="text-[10px] text-teal-400/70 font-medium uppercase tracking-wide mb-1.5">本月收入</p>
+          <p className="text-base font-bold tabular-nums text-teal-300 leading-tight">
+            + {fmtCurrency(incomeTotal)}
+          </p>
+          <p className="text-[10px] text-teal-600/60 mt-1">{monthIncomeEntries.length} 筆已收</p>
+        </div>
+        {/* 支出 */}
+        <div className="rounded-2xl border border-orange-500/20 bg-orange-500/[0.05] px-4 py-3.5">
+          <p className="text-[10px] text-orange-400/70 font-medium uppercase tracking-wide mb-1.5">本月支出</p>
+          <p className="text-base font-bold tabular-nums text-orange-300 leading-tight">
+            − {fmtCurrency(expenseTotal)}
+          </p>
+          <p className="text-[10px] text-orange-600/60 mt-1">{monthExpenseEntries.length} 筆已付</p>
+        </div>
+        {/* 待收 */}
+        <div className="rounded-2xl border border-teal-500/15 bg-white/[0.03] px-4 py-3.5">
+          <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1.5">本月待收</p>
+          <p className={`text-base font-bold tabular-nums leading-tight ${monthReceivable.length > 0 ? "text-teal-400" : "text-gray-600"}`}>
+            {fmtCurrency(receivableTotal)}
+          </p>
+          <p className="text-[10px] text-gray-700 mt-1">{monthReceivable.length} 筆</p>
+        </div>
+        {/* 待付 */}
+        <div className="rounded-2xl border border-rose-500/15 bg-white/[0.03] px-4 py-3.5">
+          <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1.5">本月待付</p>
+          <p className={`text-base font-bold tabular-nums leading-tight ${monthPayable.length > 0 ? "text-rose-400" : "text-gray-600"}`}>
+            {fmtCurrency(payableTotal)}
+          </p>
+          <p className="text-[10px] text-gray-700 mt-1">{monthPayable.length} 筆</p>
+        </div>
+      </div>
+
+      {/* 結餘 */}
+      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 mb-5 flex items-center justify-between">
+        <p className="text-xs text-gray-500 font-medium">本月結餘</p>
+        <p className={`text-base font-bold tabular-nums ${balance >= 0 ? "text-white" : "text-rose-400"}`}>
+          {balance >= 0 ? "+" : "−"} {fmtCurrency(Math.abs(balance))}
+        </p>
+      </div>
+
+      {/* ── Filter pills ─────────────────────────────────────────────────── */}
+      <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-0.5 mb-5">
+        {FILTERS.map(({ key, label }) => {
+          const isActive = filterType === key;
+          const badge =
+            key === "receivable" ? monthReceivable.length :
+            key === "payable"    ? monthPayable.length    : 0;
           return (
             <button
               key={key}
               type="button"
-              onClick={() => { setTab(key); setConfirmingRef(null); }}
+              onClick={() => { setFilterType(key); setConfirmingRef(null); }}
               className={`shrink-0 relative px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
                 isActive
                   ? "bg-white/12 text-white"
@@ -420,11 +549,11 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
               }`}
             >
               {label}
-              {badgeCount > 0 && (
+              {badge > 0 && (
                 <span className={`absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center ${
                   key === "receivable" ? "bg-teal-500 text-white" : "bg-rose-500 text-white"
                 }`}>
-                  {badgeCount > 9 ? "9+" : badgeCount}
+                  {badge > 9 ? "9+" : badge}
                 </span>
               )}
             </button>
@@ -432,210 +561,104 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
         })}
       </div>
 
-      {/* ── 總覽 Tab ────────────────────────────────────────────────────────── */}
-      {tab === "overview" && (
-        <div className="space-y-6">
-          {/* 4 summary cards */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setTab("receivable")}
-              className="rounded-2xl border border-teal-500/20 bg-teal-500/[0.06] px-4 py-4 text-left hover:bg-teal-500/10 transition-colors"
-            >
-              <p className="text-[10px] text-teal-400/70 font-medium uppercase tracking-wide mb-2">待收</p>
-              <p className="text-lg font-bold tabular-nums text-teal-300 leading-tight">
-                {fmtCurrency(receivableTotal)}
+      {/* ── Monthly detail list ──────────────────────────────────────────── */}
+      {listItems.length === 0 ? (
+        <EmptyMonth filterType={filterType} />
+      ) : (
+        <div className="space-y-5">
+          {groupedByDate.map(([dateKey, dayItems]) => (
+            <div key={dateKey || "nodate"}>
+              {/* Date group header */}
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 px-1">
+                {dateKey ? fmtGroupDate(dateKey) : "未指定日期"}
               </p>
-              <p className="text-[10px] text-teal-500/60 mt-1">{pendingReceivable.length} 筆</p>
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("payable")}
-              className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.06] px-4 py-4 text-left hover:bg-rose-500/10 transition-colors"
-            >
-              <p className="text-[10px] text-rose-400/70 font-medium uppercase tracking-wide mb-2">待付</p>
-              <p className="text-lg font-bold tabular-nums text-rose-300 leading-tight">
-                {fmtCurrency(payableTotal)}
-              </p>
-              <p className="text-[10px] text-rose-500/60 mt-1">{pendingPayable.length} 筆</p>
-            </button>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4">
-              <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-2">本月收入</p>
-              <p className="text-lg font-bold tabular-nums text-teal-400 leading-tight">
-                + {fmtCurrency(incomeTotal)}
-              </p>
-              <p className="text-[10px] text-gray-700 mt-1">{year} 年 {month} 月</p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4">
-              <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-2">本月支出</p>
-              <p className="text-lg font-bold tabular-nums text-orange-400 leading-tight">
-                − {fmtCurrency(expenseTotal)}
-              </p>
-              <p className="text-[10px] text-gray-700 mt-1">{year} 年 {month} 月</p>
-            </div>
-          </div>
-
-          {/* Recent receivable */}
-          {pendingReceivable.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">近期待收</p>
-                {pendingReceivable.length > 3 && (
-                  <button type="button" onClick={() => setTab("receivable")}
-                    className="text-xs text-blue-400 hover:text-blue-300">查看全部</button>
+              <div className="space-y-2">
+                {dayItems.map((item) =>
+                  item.kind === "entry" ? (
+                    <EntryRow
+                      key={item.data.id}
+                      entry={item.data}
+                      onClick={() => openEdit(item.data)}
+                    />
+                  ) : (
+                    <div key={item.pendingRef.item.id}>
+                      <PendingItemCard
+                        ref_={item.pendingRef}
+                        todayStr={todayStr}
+                        isConfirming={confirmingRef?.item.id === item.pendingRef.item.id}
+                        onStartConfirm={() => handleStartConfirm(item.pendingRef)}
+                        onEditReminder={onEditReminder}
+                      />
+                      {renderConfirmForm(item.pendingRef)}
+                    </div>
+                  )
                 )}
               </div>
-              <div className="space-y-2">
-                {pendingReceivable.slice(0, 3).map(({ item, reminder }) => (
-                  <OverviewPendingRow key={item.id} item={item} reminder={reminder}
-                    type="receivable" onGoTab={() => setTab("receivable")} />
-                ))}
-              </div>
             </div>
-          )}
-
-          {/* Recent payable */}
-          {pendingPayable.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">近期待付</p>
-                {pendingPayable.length > 3 && (
-                  <button type="button" onClick={() => setTab("payable")}
-                    className="text-xs text-blue-400 hover:text-blue-300">查看全部</button>
-                )}
-              </div>
-              <div className="space-y-2">
-                {pendingPayable.slice(0, 3).map(({ item, reminder }) => (
-                  <OverviewPendingRow key={item.id} item={item} reminder={reminder}
-                    type="payable" onGoTab={() => setTab("payable")} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {pendingReceivable.length === 0 && pendingPayable.length === 0 && (
-            <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-6 text-center">
-              <p className="text-sm text-gray-500">目前沒有待收或待付款項</p>
-            </div>
-          )}
+          ))}
         </div>
-      )}
-
-      {/* ── 待收 Tab ────────────────────────────────────────────────────────── */}
-      {tab === "receivable" && (
-        <div>
-          <div className="mb-4">
-            <p className="text-2xl font-bold tabular-nums text-teal-300">{fmtCurrency(receivableTotal)}</p>
-            <p className="text-xs text-gray-500 mt-0.5">共 {pendingReceivable.length} 筆待收</p>
-          </div>
-
-          {pendingReceivable.length === 0 ? (
-            <EmptyPending type="receivable" />
-          ) : (
-            <div className="space-y-3">
-              {pendingReceivable.map((ref) => (
-                <div key={ref.item.id}>
-                  <PendingItemCard
-                    ref_={ref}
-                    todayStr={todayStr}
-                    isConfirming={confirmingRef?.item.id === ref.item.id}
-                    onStartConfirm={() => handleStartConfirm(ref)}
-                    onEditReminder={onEditReminder}
-                  />
-                  {renderConfirmForm(ref)}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── 待付 Tab ────────────────────────────────────────────────────────── */}
-      {tab === "payable" && (
-        <div>
-          <div className="mb-4">
-            <p className="text-2xl font-bold tabular-nums text-rose-300">{fmtCurrency(payableTotal)}</p>
-            <p className="text-xs text-gray-500 mt-0.5">共 {pendingPayable.length} 筆待付</p>
-          </div>
-
-          {pendingPayable.length === 0 ? (
-            <EmptyPending type="payable" />
-          ) : (
-            <div className="space-y-3">
-              {pendingPayable.map((ref) => (
-                <div key={ref.item.id}>
-                  <PendingItemCard
-                    ref_={ref}
-                    todayStr={todayStr}
-                    isConfirming={confirmingRef?.item.id === ref.item.id}
-                    onStartConfirm={() => handleStartConfirm(ref)}
-                    onEditReminder={onEditReminder}
-                  />
-                  {renderConfirmForm(ref)}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── 收入 Tab ────────────────────────────────────────────────────────── */}
-      {tab === "income" && (
-        <IncomeExpenseTab
-          type="Income"
-          entries={entries}
-          year={year} month={month}
-          onPrevMonth={prevMonth} onNextMonth={nextMonth}
-          onAdd={() => openAdd("Income")}
-          onEdit={openEdit}
-        />
-      )}
-
-      {/* ── 支出 Tab ────────────────────────────────────────────────────────── */}
-      {tab === "expense" && (
-        <IncomeExpenseTab
-          type="Expense"
-          entries={entries}
-          year={year} month={month}
-          onPrevMonth={prevMonth} onNextMonth={nextMonth}
-          onAdd={() => openAdd("Expense")}
-          onEdit={openEdit}
-        />
       )}
     </div>
   );
 }
 
-// ─── OverviewPendingRow ───────────────────────────────────────────────────────
+// ─── EmptyMonth ───────────────────────────────────────────────────────────────
 
-function OverviewPendingRow({
-  item, reminder, type, onGoTab,
-}: {
-  item: FinancialItem;
-  reminder: Reminder;
-  type: "receivable" | "payable";
-  onGoTab: () => void;
-}) {
-  const isReceivable = type === "receivable";
-  const label = item.title !== reminder.title && item.title ? item.title : reminder.title;
+function EmptyMonth({ filterType }: { filterType: FilterType }) {
+  const messages: Record<FilterType, string> = {
+    all:        "本月尚無收支紀錄",
+    income:     "本月尚無收入紀錄",
+    expense:    "本月尚無支出紀錄",
+    receivable: "本月尚無待收款項",
+    payable:    "本月尚無待付款項",
+  };
+  return (
+    <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+      <div className="w-14 h-14 rounded-2xl border border-white/10 bg-white/[0.03] flex items-center justify-center">
+        <svg className="w-6 h-6 text-gray-700" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="6" width="18" height="15" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+          <path d="M3 10h18M8 3v3M16 3v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+      </div>
+      <p className="text-sm text-gray-500">{messages[filterType]}</p>
+    </div>
+  );
+}
+
+// ─── EntryRow ─────────────────────────────────────────────────────────────────
+
+function EntryRow({ entry, onClick }: { entry: FinanceEntry; onClick: () => void }) {
+  const isIncome = entry.type === "Income";
   return (
     <button
       type="button"
-      onClick={onGoTab}
-      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-white/8 bg-white/[0.03] hover:bg-white/[0.06] transition-colors text-left"
+      onClick={onClick}
+      className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all text-left"
     >
-      <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isReceivable ? "bg-teal-400" : "bg-rose-400"}`} />
+      <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isIncome ? "bg-teal-400" : "bg-orange-400"}`} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-white truncate">{label}</p>
-        {item.dueDate && (
-          <p className="text-[10px] text-gray-600 mt-0.5">
-            {isReceivable ? "預計收款日" : "付款期限"}：{item.dueDate}
-          </p>
-        )}
+        <p className="text-sm font-medium text-white truncate">{entry.title}</p>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
+            isIncome
+              ? "bg-teal-500/15 text-teal-400 border-teal-500/25"
+              : "bg-orange-500/15 text-orange-400 border-orange-500/25"
+          }`}>
+            {isIncome ? "收入" : "支出"}
+          </span>
+          {entry.note && (
+            <p className="text-[10px] text-gray-500 truncate">{entry.note}</p>
+          )}
+        </div>
       </div>
-      <p className={`text-sm font-semibold tabular-nums shrink-0 ${isReceivable ? "text-teal-400" : "text-rose-400"}`}>
-        {fmtCurrency(item.amount)}
-      </p>
+      <div className="text-right shrink-0 ml-2">
+        <p className={`text-sm font-bold tabular-nums ${isIncome ? "text-teal-400" : "text-orange-400"}`}>
+          {isIncome ? "+" : "−"} {fmtCurrency(entry.amount)}
+        </p>
+      </div>
+      <svg className="w-3.5 h-3.5 text-gray-700 shrink-0" viewBox="0 0 16 16" fill="none">
+        <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
     </button>
   );
 }
@@ -667,7 +690,6 @@ function PendingItemCard({
           : "border-white/10 bg-white/[0.04]"
     }`}>
       <div className="flex items-start gap-3">
-        {/* Status circle */}
         <button
           type="button"
           onClick={onStartConfirm}
@@ -677,9 +699,7 @@ function PendingItemCard({
               : "border-rose-400/60 hover:border-rose-300 hover:bg-rose-500/10"
           }`}
         />
-
         <div className="flex-1 min-w-0">
-          {/* Badges */}
           <div className="flex items-center gap-1.5 flex-wrap mb-1">
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
               isReceivable
@@ -694,23 +714,15 @@ function PendingItemCard({
               </span>
             )}
           </div>
-
-          {/* Title */}
           <p className="text-sm font-semibold text-white leading-snug">{label}</p>
-
-          {/* Date */}
           {item.dueDate && (
             <p className={`text-xs mt-1 ${isOverdue ? "text-rose-400/70" : "text-gray-500"}`}>
               {isReceivable ? "預計收款日" : "付款期限"}：{item.dueDate}
             </p>
           )}
-
-          {/* Note */}
           {item.note && item.note !== label && (
             <p className="text-xs text-gray-600 mt-0.5">備註：{item.note}</p>
           )}
-
-          {/* Source link */}
           {onEditReminder && (
             <button
               type="button"
@@ -724,18 +736,12 @@ function PendingItemCard({
             </button>
           )}
         </div>
-
-        {/* Amount */}
         <div className="text-right shrink-0">
-          <p className={`text-base font-bold tabular-nums ${
-            isReceivable ? "text-teal-400" : "text-rose-400"
-          }`}>
+          <p className={`text-base font-bold tabular-nums ${isReceivable ? "text-teal-400" : "text-rose-400"}`}>
             {fmtCurrency(item.amount)}
           </p>
         </div>
       </div>
-
-      {/* Confirm button */}
       {!isConfirming && (
         <div className="mt-3 flex justify-end">
           <button
@@ -752,131 +758,5 @@ function PendingItemCard({
         </div>
       )}
     </div>
-  );
-}
-
-// ─── EmptyPending ─────────────────────────────────────────────────────────────
-
-function EmptyPending({ type }: { type: "receivable" | "payable" }) {
-  const isReceivable = type === "receivable";
-  return (
-    <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-      <div className={`w-14 h-14 rounded-2xl border flex items-center justify-center ${
-        isReceivable
-          ? "border-teal-500/20 bg-teal-500/5"
-          : "border-rose-500/20 bg-rose-500/5"
-      }`}>
-        <span className="text-2xl">{isReceivable ? "💚" : "📋"}</span>
-      </div>
-      <p className="text-sm text-gray-500">目前沒有{isReceivable ? "待收" : "待付"}款項</p>
-      <p className="text-xs text-gray-700">
-        在提醒事項中新增款項後，<br />會顯示在這裡。
-      </p>
-    </div>
-  );
-}
-
-// ─── IncomeExpenseTab ─────────────────────────────────────────────────────────
-
-function IncomeExpenseTab({
-  type, entries, year, month,
-  onPrevMonth, onNextMonth, onAdd, onEdit,
-}: {
-  type: FinanceType;
-  entries: FinanceEntry[];
-  year: number; month: number;
-  onPrevMonth: () => void; onNextMonth: () => void;
-  onAdd: () => void;
-  onEdit: (e: FinanceEntry) => void;
-}) {
-  const isIncome = type === "Income";
-  const prefix        = monthPrefix(year, month);
-  const monthEntries  = entries.filter((e) => e.date.startsWith(prefix) && e.type === type);
-  const monthTotal    = monthEntries.reduce((s, e) => s + e.amount, 0);
-  const sortedEntries = [...monthEntries].sort((a, b) => b.date.localeCompare(a.date));
-
-  return (
-    <div>
-      {/* Month navigator */}
-      <div className="flex items-center justify-between mb-5">
-        <button
-          type="button"
-          onClick={onPrevMonth}
-          className="w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-all"
-        >
-          ‹
-        </button>
-        <div className="text-center">
-          <p className="text-sm font-semibold text-white">{year} 年 {month} 月</p>
-          <p className={`text-lg font-bold tabular-nums mt-0.5 ${isIncome ? "text-teal-400" : "text-orange-400"}`}>
-            {isIncome ? "+" : "−"} {fmtCurrency(monthTotal)}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onNextMonth}
-          className="w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-all"
-        >
-          ›
-        </button>
-      </div>
-
-      {/* Add button */}
-      <button
-        type="button"
-        onClick={onAdd}
-        className={`w-full mb-4 py-2.5 rounded-xl border text-sm font-semibold transition-all ${
-          isIncome
-            ? "bg-teal-500/10 border-teal-500/25 text-teal-300 hover:bg-teal-500/18"
-            : "bg-orange-500/10 border-orange-500/25 text-orange-300 hover:bg-orange-500/18"
-        }`}
-      >
-        ＋ 新增{isIncome ? "收入" : "支出"}
-      </button>
-
-      {/* Entry list */}
-      {sortedEntries.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-14 gap-3 text-center">
-          <p className="text-sm text-gray-500">本月尚無{isIncome ? "收入" : "支出"}紀錄</p>
-          <p className="text-xs text-gray-700">點擊上方按鈕新增{isIncome ? "收入" : "支出"}</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {sortedEntries.map((entry) => (
-            <EntryRow key={entry.id} entry={entry} onClick={() => onEdit(entry)} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── EntryRow ─────────────────────────────────────────────────────────────────
-
-function EntryRow({ entry, onClick }: { entry: FinanceEntry; onClick: () => void }) {
-  const isIncome = entry.type === "Income";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all text-left"
-    >
-      <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isIncome ? "bg-teal-400" : "bg-orange-400"}`} />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-white truncate">{entry.title}</p>
-        {entry.note && (
-          <p className="text-[10px] text-gray-500 mt-0.5 truncate">{entry.note}</p>
-        )}
-      </div>
-      <div className="text-right shrink-0 ml-2">
-        <p className={`text-sm font-bold tabular-nums ${isIncome ? "text-teal-400" : "text-orange-400"}`}>
-          {isIncome ? "+" : "−"} {fmtCurrency(entry.amount)}
-        </p>
-        <p className="text-[11px] text-gray-600 mt-0.5">{fmtDate(entry.date)}</p>
-      </div>
-      <svg className="w-3.5 h-3.5 text-gray-700 shrink-0" viewBox="0 0 16 16" fill="none">
-        <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </button>
   );
 }
