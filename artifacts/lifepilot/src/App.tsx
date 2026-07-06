@@ -860,13 +860,33 @@ export default function App() {
   const [createConfirmPending, setCreateConfirmPending] = useState(false);
   const [missingDateCount, setMissingDateCount] = useState(0);
 
-  function handleDeleteReminder(id: string) {
-    const entries = loadFinanceEntries();
-    const hasLinked = entries.some((e) => e.sourceReminderId === id);
-    if (hasLinked) {
-      saveFinanceEntries(entries.map((e) =>
-        e.sourceReminderId === id ? { ...e, sourceReminderId: undefined } : e
+  // ── Delete confirmation when reminder has linked FinanceEntries ──────────────
+  const [deleteFinancePrompt, setDeleteFinancePrompt] = useState<{
+    reminderId: string;
+    fromEdit: boolean;
+    linkedCount: number;
+  } | null>(null);
+
+  function executeDeleteReminder(reminderId: string, alsoDeleteFinance: boolean, fromEdit: boolean) {
+    const allEntries = loadFinanceEntries();
+    if (alsoDeleteFinance) {
+      saveFinanceEntries(allEntries.filter((e) => e.sourceReminderId !== reminderId));
+    } else {
+      saveFinanceEntries(allEntries.map((e) =>
+        e.sourceReminderId === reminderId ? { ...e, sourceReminderId: undefined } : e
       ));
+    }
+    setSavedReminders(deleteReminder(reminderId));
+    if (fromEdit) setEditingReminderId(null);
+    setDeleteFinancePrompt(null);
+  }
+
+  function handleDeleteReminder(id: string) {
+    const allEntries = loadFinanceEntries();
+    const linked = allEntries.filter((e) => e.sourceReminderId === id);
+    if (linked.length > 0) {
+      setDeleteFinancePrompt({ reminderId: id, fromEdit: false, linkedCount: linked.length });
+      return;
     }
     setSavedReminders(deleteReminder(id));
   }
@@ -893,12 +913,11 @@ export default function App() {
 
   function handleDeleteFromEdit() {
     if (!editingReminderId) return;
-    const entries = loadFinanceEntries();
-    const hasLinked = entries.some((e) => e.sourceReminderId === editingReminderId);
-    if (hasLinked) {
-      saveFinanceEntries(entries.map((e) =>
-        e.sourceReminderId === editingReminderId ? { ...e, sourceReminderId: undefined } : e
-      ));
+    const allEntries = loadFinanceEntries();
+    const linked = allEntries.filter((e) => e.sourceReminderId === editingReminderId);
+    if (linked.length > 0) {
+      setDeleteFinancePrompt({ reminderId: editingReminderId, fromEdit: true, linkedCount: linked.length });
+      return;
     }
     setSavedReminders(deleteReminder(editingReminderId));
     setEditingReminderId(null);
@@ -1053,6 +1072,8 @@ export default function App() {
 
         // Convert future-receivable amount → FinancialItem (type=receivable).
         // Clear item.amount so deriveFinancialItems in EditPage doesn't double-count.
+        // Set dueDate = event date so monthReceivable filter works even without an
+        // explicit payment due date in the message.
         const rawAmt = String(e.amount ?? "").replace(/[^\d.]/g, "");
         const amtNum = parseFloat(rawAmt);
         if (!isNaN(amtNum) && amtNum > 0) {
@@ -1061,6 +1082,7 @@ export default function App() {
             title: "待收款",
             type: "receivable",
             amount: amtNum,
+            dueDate: _startDateNorm || undefined,
           };
           item.financialItems = [fi];
           item.amount = ""; // prevent double-counting via legacy fallback path
@@ -1238,7 +1260,14 @@ export default function App() {
       financialStatus: item.financialStatus !== "none" ? item.financialStatus : undefined,
       expectedAmount: item.expectedAmount,
       financialDueDate: item.financialDueDate || undefined,
-      financialItems: item.financialItems?.length ? item.financialItems : undefined,
+      // Ensure every FinancialItem has a dueDate so monthReceivable/monthPayable
+      // filters can place it in the correct month. Fall back to the reminder's own date.
+      financialItems: item.financialItems?.length
+        ? item.financialItems.map((fi) => ({
+            ...fi,
+            dueDate: fi.dueDate || item.date || undefined,
+          }))
+        : undefined,
       workProfileId: item.workProfileId || undefined,
       templateData: item.templateData ?? undefined,
     }));
@@ -1622,6 +1651,55 @@ export default function App() {
             onClose={() => setShowWorkProfiles(false)}
             savedReminders={savedReminders}
           />
+        </div>
+      )}
+      {/* ── Delete reminder + linked finance confirmation dialog ────────────── */}
+      {deleteFinancePrompt && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 px-4 pb-6 sm:pb-0">
+          <div className="w-full max-w-sm rounded-2xl bg-gray-900 border border-white/10 p-5 shadow-2xl space-y-4">
+            <div>
+              <p className="text-base font-semibold text-white">刪除事項</p>
+              <p className="text-sm text-gray-400 mt-1.5">
+                此事項有 {deleteFinancePrompt.linkedCount} 筆關聯收支紀錄，
+                要一併刪除，還是保留收支紀錄？
+              </p>
+            </div>
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() =>
+                  executeDeleteReminder(
+                    deleteFinancePrompt.reminderId,
+                    true,
+                    deleteFinancePrompt.fromEdit,
+                  )
+                }
+                className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm transition-colors"
+              >
+                一併刪除關聯收支
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  executeDeleteReminder(
+                    deleteFinancePrompt.reminderId,
+                    false,
+                    deleteFinancePrompt.fromEdit,
+                  )
+                }
+                className="w-full py-3 rounded-xl bg-white/8 hover:bg-white/12 border border-white/10 text-gray-200 font-semibold text-sm transition-colors"
+              >
+                保留收支紀錄，僅刪除事項
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteFinancePrompt(null)}
+                className="w-full py-2.5 rounded-xl text-gray-500 text-sm hover:text-gray-300 transition-colors"
+              >
+                取消
+              </button>
+            </div>
+          </div>
         </div>
       )}
       </main>

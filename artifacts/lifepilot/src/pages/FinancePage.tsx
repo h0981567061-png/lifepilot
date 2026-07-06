@@ -160,12 +160,21 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
     () => entries.filter((e) => e.type === "Expense"  && e.date.startsWith(prefix)),
     [entries, prefix],
   );
+  // Fall back to the reminder's own date when a FinancialItem has no explicit dueDate.
+  // This makes items without a separate due date appear in the correct month based on
+  // the event date, instead of being hidden from all monthly views.
   const monthReceivable = useMemo(
-    () => allReceivable.filter((r) => r.item.dueDate?.startsWith(prefix)),
+    () => allReceivable.filter((r) => {
+      const eff = r.item.dueDate || r.reminder.date;
+      return eff?.startsWith(prefix);
+    }),
     [allReceivable, prefix],
   );
   const monthPayable = useMemo(
-    () => allPayable.filter((r) => r.item.dueDate?.startsWith(prefix)),
+    () => allPayable.filter((r) => {
+      const eff = r.item.dueDate || r.reminder.date;
+      return eff?.startsWith(prefix);
+    }),
     [allPayable, prefix],
   );
 
@@ -186,12 +195,12 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
     }
     if (filterType === "all" || filterType === "receivable") {
       monthReceivable.forEach((r) =>
-        items.push({ kind: "pending", pendingRef: r, sortDate: r.item.dueDate ?? "" }),
+        items.push({ kind: "pending", pendingRef: r, sortDate: r.item.dueDate || r.reminder.date || "" }),
       );
     }
     if (filterType === "all" || filterType === "payable") {
       monthPayable.forEach((r) =>
-        items.push({ kind: "pending", pendingRef: r, sortDate: r.item.dueDate ?? "" }),
+        items.push({ kind: "pending", pendingRef: r, sortDate: r.item.dueDate || r.reminder.date || "" }),
       );
     }
     return items.sort((a, b) => b.sortDate.localeCompare(a.sortDate));
