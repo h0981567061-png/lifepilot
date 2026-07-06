@@ -1478,6 +1478,7 @@ export default function App() {
           setActivePage(page);
           setShowCategoryMgmt(false);
           setShowWorkProfiles(false);
+          setEditingReminderId(null);
         }}
         remindersCount={savedReminders.length}
       />
