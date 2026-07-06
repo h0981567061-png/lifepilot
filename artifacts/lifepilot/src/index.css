@@ -239,6 +239,15 @@
 
 }
 
+/* ── Typography scale ──────────────────────────────────────────────────────
+   Tailwind uses rem for all size utilities, so adjusting the html font-size
+   proportionally scales every text-* / p-* / gap-* / rounded-* that uses rem.
+   px-based values (fixed heights like h-[58px]) are intentionally unaffected.
+   medium (100% = 16px) is the default and needs no override.
+───────────────────────────────────────────────────────────────────────────── */
+html[data-text-size="small"] { font-size: 93.75%; }   /* 15px base */
+html[data-text-size="large"] { font-size: 112.5%; }   /* 18px base */
+
 @layer base {
   * {
     @apply border-border;

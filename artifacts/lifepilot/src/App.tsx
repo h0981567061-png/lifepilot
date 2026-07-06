@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { loadUIPrefs, saveUIPrefs, applyTextSize, type TextSize } from "./lib/uiPrefs";
 import { parseWithAI, type AIEvent } from "./aiParser";
 import type { PreviewItem } from "./previewTypes";
 import { TYPE_LABEL, emptyPreviewItem } from "./previewTypes";
@@ -808,7 +809,7 @@ function BottomNav({
             }`}
           >
             <div className="relative">
-              <span className={`text-[11px] font-semibold tracking-wide ${active ? "text-blue-400" : ""}`}>
+              <span className={`text-xs font-semibold tracking-wide ${active ? "text-blue-400" : ""}`}>
                 {tab.label}
               </span>
               {tab.badge !== undefined && tab.badge > 0 && (
@@ -839,6 +840,17 @@ export default function App() {
   const [activePage, setActivePage] = useState<PageId>("home");
   const [showCategoryMgmt, setShowCategoryMgmt] = useState(false);
   const [showWorkProfiles, setShowWorkProfiles] = useState(false);
+  const [textSize, setTextSize] = useState<TextSize>(() => {
+    const prefs = loadUIPrefs();
+    applyTextSize(prefs.textSize);
+    return prefs.textSize;
+  });
+
+  function handleTextSizeChange(size: TextSize) {
+    setTextSize(size);
+    applyTextSize(size);
+    saveUIPrefs({ textSize: size });
+  }
   // "select" = main add screen (textarea + AI + 手動入口), "manual" = blank draft flow
   const [addMode, setAddMode] = useState<"select" | "manual">("select");
   const [savedReminders, setSavedReminders] = useState<Reminder[]>(() => loadReminders());
@@ -1581,6 +1593,8 @@ export default function App() {
         <MyPage
           onOpenCategoryMgmt={() => setShowCategoryMgmt(true)}
           onOpenWorkProfiles={() => setShowWorkProfiles(true)}
+          textSize={textSize}
+          onTextSizeChange={handleTextSizeChange}
         />
       )}
       {editingReminderId !== null &&
