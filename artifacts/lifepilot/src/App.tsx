@@ -1474,7 +1474,11 @@ export default function App() {
       </main>
       <BottomNav
         activePage={activePage}
-        onNavigate={setActivePage}
+        onNavigate={(page) => {
+          setActivePage(page);
+          setShowCategoryMgmt(false);
+          setShowWorkProfiles(false);
+        }}
         remindersCount={savedReminders.length}
       />
     </div>
