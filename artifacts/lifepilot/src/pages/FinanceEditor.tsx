@@ -1,17 +1,16 @@
 import { useState } from "react";
-import type { FinanceEntry, FinanceType } from "../financeStore";
+import type { FinanceEntry, FinanceType, RepeatRule } from "../financeStore";
 import { FINANCE_INCOME_CATEGORIES, FINANCE_EXPENSE_CATEGORIES, parseAmount } from "../financeStore";
 import { useCategoryStore } from "../CategoryContext";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  entry: FinanceEntry | null;       // null = new entry
+  entry: FinanceEntry | null;
   defaultType?: FinanceType;
   onSave: (entry: FinanceEntry) => void;
   onDelete?: () => void;
   onCancel: () => void;
-  /** True when this entry was created by confirming a Financial Item */
   isLinkedEntry?: boolean;
 }
 
@@ -46,6 +45,50 @@ function TextInput({
   );
 }
 
+// ─── Type metadata ────────────────────────────────────────────────────────────
+
+const TYPE_CONFIG: Record<FinanceType, {
+  label: string;
+  emoji: string;
+  activeClass: string;
+  titlePlaceholder: string;
+  dateLabel: string;
+  sourceLabel: string;
+}> = {
+  Income: {
+    label: "收入",
+    emoji: "💰",
+    activeClass: "bg-teal-500/20 text-teal-300 border border-teal-500/25",
+    titlePlaceholder: "收入名稱",
+    dateLabel: "日期",
+    sourceLabel: "收入來源",
+  },
+  Expense: {
+    label: "支出",
+    emoji: "💸",
+    activeClass: "bg-orange-500/20 text-orange-300 border border-orange-500/25",
+    titlePlaceholder: "支出名稱",
+    dateLabel: "日期",
+    sourceLabel: "商家地點",
+  },
+  Receivable: {
+    label: "待收",
+    emoji: "📥",
+    activeClass: "bg-teal-500/15 text-teal-200 border border-teal-500/20",
+    titlePlaceholder: "待收款項名稱",
+    dateLabel: "預計收款日",
+    sourceLabel: "收款來源",
+  },
+  Payable: {
+    label: "待付",
+    emoji: "📤",
+    activeClass: "bg-rose-500/15 text-rose-200 border border-rose-500/20",
+    titlePlaceholder: "待付款項名稱",
+    dateLabel: "付款期限",
+    sourceLabel: "付款對象",
+  },
+};
+
 // ─── FinanceEditor ────────────────────────────────────────────────────────────
 
 export function FinanceEditor({
@@ -70,17 +113,32 @@ export function FinanceEditor({
   const [merchant,          setMerchant]          = useState(entry?.merchant ?? "");
   const [note,              setNote]              = useState(entry?.note ?? "");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [repeatEnabled,     setRepeatEnabled]     = useState(!!entry?.repeatRule);
+  const [repeatRule,        setRepeatRule]        = useState<RepeatRule>(
+    entry?.repeatRule ?? { freq: "monthly" }
+  );
 
   const { enabledCategories } = useCategoryStore();
 
-  const finCatOptions = type === "Income" ? FINANCE_INCOME_CATEGORIES : FINANCE_EXPENSE_CATEGORIES;
+  const isPending   = type === "Receivable" || type === "Payable";
+  const isIncomeLike = type === "Income" || type === "Receivable";
+  const finCatOptions = isIncomeLike ? FINANCE_INCOME_CATEGORIES : FINANCE_EXPENSE_CATEGORIES;
 
   const amount  = parseAmount(amountStr);
   const canSave = title.trim().length > 0 && !isNaN(amount) && amount > 0;
 
   function handleTypeChange(t: FinanceType) {
+    const wasIncomeLike = type === "Income" || type === "Receivable";
+    const nowIncomeLike = t === "Income" || t === "Receivable";
+    if (wasIncomeLike !== nowIncomeLike) {
+      setFinancialCategory("");
+      setSource("");
+      setMerchant("");
+    }
+    if (t === "Receivable" || t === "Payable") {
+      setRepeatEnabled(false);
+    }
     setType(t);
-    setFinancialCategory(""); // reset when switching type
   }
 
   function handleSave() {
@@ -101,9 +159,12 @@ export function FinanceEditor({
       updatedAt:              now,
       sourceReminderId:       entry?.sourceReminderId,
       sourceFinancialItemId:  entry?.sourceFinancialItemId,
+      repeatRule:             !isPending && repeatEnabled ? repeatRule : undefined,
     };
     onSave(saved);
   }
+
+  const cfg = TYPE_CONFIG[type];
 
   return (
     <div className="max-w-2xl mx-auto px-6 py-6 pb-16">
@@ -124,35 +185,41 @@ export function FinanceEditor({
         </span>
       </div>
 
-      {/* Type segmented control */}
-      <div className="flex rounded-2xl bg-white/5 border border-white/8 p-1 mb-6 gap-1">
-        {(["Expense", "Income"] as const).map((t) => {
+      {/* Type segmented control — 4 types */}
+      <div className="grid grid-cols-4 rounded-2xl bg-white/5 border border-white/8 p-1 mb-6 gap-1">
+        {(["Income", "Expense", "Receivable", "Payable"] as const).map((t) => {
           const active = type === t;
+          const c = TYPE_CONFIG[t];
           return (
             <button
               key={t}
               type="button"
               onClick={() => handleTypeChange(t)}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                active
-                  ? t === "Income"
-                    ? "bg-teal-500/20 text-teal-300 border border-teal-500/25"
-                    : "bg-orange-500/20 text-orange-300 border border-orange-500/25"
-                  : "text-gray-500 hover:text-gray-400"
+              className={`flex-1 py-2.5 rounded-xl text-xs font-semibold transition-all leading-tight text-center ${
+                active ? c.activeClass : "text-gray-500 hover:text-gray-400"
               }`}
             >
-              {t === "Income" ? "💰 收入" : "💸 支出"}
+              <span className="block text-base leading-none mb-0.5">{c.emoji}</span>
+              {c.label}
             </button>
           );
         })}
       </div>
+
+      {isPending && (
+        <div className="mb-4 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/8 text-xs text-gray-500 leading-relaxed">
+          {type === "Receivable"
+            ? "待收：款項尚未入帳，不計入本月收入，確認後才轉為正式收入。"
+            : "待付：款項尚未付出，不計入本月支出，確認後才轉為正式支出。"}
+        </div>
+      )}
 
       {/* Fields */}
       <FieldRow label="標題">
         <TextInput
           value={title}
           onChange={setTitle}
-          placeholder={type === "Income" ? "收入名稱" : "支出名稱"}
+          placeholder={cfg.titlePlaceholder}
         />
       </FieldRow>
 
@@ -168,7 +235,7 @@ export function FinanceEditor({
         </div>
       </FieldRow>
 
-      <FieldRow label="日期">
+      <FieldRow label={cfg.dateLabel}>
         <input
           type="date"
           value={date}
@@ -210,25 +277,14 @@ export function FinanceEditor({
         </select>
       </FieldRow>
 
-      {type === "Income" && (
-        <FieldRow label="收入來源">
-          <TextInput
-            value={source}
-            onChange={setSource}
-            placeholder="來源（選填）"
-          />
-        </FieldRow>
-      )}
-
-      {type === "Expense" && (
-        <FieldRow label="商家地點">
-          <TextInput
-            value={merchant}
-            onChange={setMerchant}
-            placeholder="商家或地點（選填）"
-          />
-        </FieldRow>
-      )}
+      {/* Source / merchant field — adapts to type */}
+      <FieldRow label={cfg.sourceLabel}>
+        <TextInput
+          value={isIncomeLike ? source : merchant}
+          onChange={isIncomeLike ? setSource : setMerchant}
+          placeholder={`${cfg.sourceLabel}（選填）`}
+        />
+      </FieldRow>
 
       <FieldRow label="備註">
         <textarea
@@ -239,6 +295,36 @@ export function FinanceEditor({
           className="w-full bg-transparent text-sm text-white placeholder-gray-600 focus:outline-none resize-none leading-relaxed"
         />
       </FieldRow>
+
+      {/* Repeat rule — only for confirmed income/expense */}
+      {!isPending && (
+        <FieldRow label="重複">
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={repeatEnabled}
+                onChange={(e) => setRepeatEnabled(e.target.checked)}
+                className="w-4 h-4 rounded"
+              />
+              <span className="text-sm text-gray-400">設為固定收支</span>
+            </label>
+            {repeatEnabled && (
+              <select
+                value={repeatRule.freq}
+                onChange={(e) => setRepeatRule({ ...repeatRule, freq: e.target.value as RepeatRule["freq"] })}
+                className="bg-white/8 border border-white/12 rounded-lg px-2.5 py-1 text-sm text-white focus:outline-none"
+                style={{ colorScheme: "dark" }}
+              >
+                <option value="daily" className="bg-gray-900">每天</option>
+                <option value="weekly" className="bg-gray-900">每週</option>
+                <option value="monthly" className="bg-gray-900">每月</option>
+                <option value="yearly" className="bg-gray-900">每年</option>
+              </select>
+            )}
+          </div>
+        </FieldRow>
+      )}
 
       {/* Amount validation hint */}
       {amountStr && (isNaN(amount) || amount <= 0) && (
@@ -287,9 +373,13 @@ export function FinanceEditor({
               ? (type === "Income"
                   ? "刪除這筆實際收支後，原款項將恢復為待收。"
                   : "刪除這筆實際收支後，原款項將恢復為待付。")
-              : (type === "Income"
-                  ? "確定刪除這筆收入紀錄？"
-                  : "確定刪除這筆支出紀錄？")}
+              : (type === "Receivable"
+                  ? "確定刪除這筆待收紀錄？"
+                  : type === "Payable"
+                    ? "確定刪除這筆待付紀錄？"
+                    : type === "Income"
+                      ? "確定刪除這筆收入紀錄？"
+                      : "確定刪除這筆支出紀錄？")}
           </p>
           <div className="flex gap-2">
             <button

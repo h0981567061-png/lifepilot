@@ -1,22 +1,29 @@
 // ─── Finance entry data model ─────────────────────────────────────────────────
 
-export type FinanceType = "Income" | "Expense";
+export type FinanceType = "Income" | "Expense" | "Receivable" | "Payable";
+
+export interface RepeatRule {
+  freq: "daily" | "weekly" | "monthly" | "yearly";
+  dayOfMonth?: number;
+  dayOfWeek?: number;
+}
 
 export interface FinanceEntry {
   id: string;
   type: FinanceType;
   title: string;
   amount: number;          // always positive; type determines sign
-  date: string;            // YYYY-MM-DD
+  date: string;            // YYYY-MM-DD (for Receivable/Payable: expected/due date)
   financialCategory: string;
   myCategory?: string;     // 我的分類 (from CategoryStore), optional
-  source?: string;         // Income: 收入來源
-  merchant?: string;       // Expense: 商家或地點
+  source?: string;         // Income/Receivable: 收入來源
+  merchant?: string;       // Expense/Payable: 商家或地點
   note?: string;
   createdAt: string;       // ISO 8601
   updatedAt: string;       // ISO 8601
   sourceReminderId?: string;        // link back to a Reminder
   sourceFinancialItemId?: string;   // link to the specific FinancialItem that triggered this entry
+  repeatRule?: RepeatRule;          // for recurring entries
 }
 
 // ─── Storage ──────────────────────────────────────────────────────────────────

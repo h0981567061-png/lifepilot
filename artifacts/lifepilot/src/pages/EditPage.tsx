@@ -14,6 +14,7 @@ import {
   loadFinanceEntries,
   saveFinanceEntries,
   type FinanceEntry,
+  type FinanceType,
   fmtCurrency,
 } from "../financeStore";
 
@@ -370,9 +371,9 @@ function FinanceEntryEditForm({
   setType, setAmount, setDate, setNote,
   onSave, onCancel,
 }: {
-  type: "Income" | "Expense";
+  type: FinanceType;
   amount: string; date: string; note: string;
-  setType: (v: "Income" | "Expense") => void;
+  setType: (v: FinanceType) => void;
   setAmount: (v: string) => void;
   setDate: (v: string) => void;
   setNote: (v: string) => void;
@@ -608,7 +609,6 @@ export function EditPage({
 
   // ── Reminder notifications ─────────────────────────────────────────────────
   const [reminders,       setReminders]       = useState<ReminderNotification[]>(reminder.reminders ?? []);
-  const [reminderEnabled, setReminderEnabled] = useState(reminder.reminderEnabled ?? true);
   const [calendarEnabled, setCalendarEnabled] = useState(reminder.calendarEnabled ?? false);
 
   // ── Financial Items (v2) ───────────────────────────────────────────────────
@@ -631,7 +631,7 @@ export function EditPage({
 
   // ── Linked Finance Entry edit / delete ────────────────────────────────────
   const [editingLinkedEntryId,     setEditingLinkedEntryId]     = useState<string | null>(null);
-  const [editLinkedType,           setEditLinkedType]           = useState<"Income" | "Expense">("Income");
+  const [editLinkedType,           setEditLinkedType]           = useState<FinanceType>("Income");
   const [editLinkedAmount,         setEditLinkedAmount]         = useState("");
   const [editLinkedDate,           setEditLinkedDate]           = useState("");
   const [editLinkedNote,           setEditLinkedNote]           = useState("");
@@ -865,7 +865,7 @@ export function EditPage({
       amount: savedAmount,
       account,
       hospital, department, source, merchant,
-      reminders, reminderEnabled, calendarEnabled,
+      reminders, reminderEnabled: reminders.length > 0, calendarEnabled,
       sameDayReminder:     reminder.sameDayReminder,
       dayBeforeReminder:   reminder.dayBeforeReminder,
       hoursBeforeReminder: reminder.hoursBeforeReminder,
@@ -964,6 +964,15 @@ export function EditPage({
             mode={timeMode} onModeChange={setTimeMode}
             startTime={startTime} onStartTime={setStartTime}
             endTime={endTime}     onEndTime={setEndTime}
+          />
+        </FieldRow>
+      )}
+
+      {!isPending && (
+        <FieldRow label="提醒">
+          <ReminderEditor
+            reminders={reminders} onChange={setReminders}
+            hasDate={re_hasDate} hasTime={re_hasTime}
           />
         </FieldRow>
       )}
@@ -1360,23 +1369,9 @@ export function EditPage({
         </>
       )}
 
-      {/* ══ 4. 提醒設定 ════════════════════════════════════════════════════════ */}
       {!isPending && (
-        <>
-          <SectionLabel>提醒設定</SectionLabel>
-          <Toggle label="提醒事項" description="啟用提醒通知"
-            checked={reminderEnabled} onChange={setReminderEnabled} />
-          <Toggle label="行事曆" description="加入行事曆（尚未串接）"
-            checked={calendarEnabled} onChange={setCalendarEnabled} />
-          {reminderEnabled && (
-            <div className="pt-3 pb-1">
-              <ReminderEditor
-                reminders={reminders} onChange={setReminders}
-                hasDate={re_hasDate} hasTime={re_hasTime}
-              />
-            </div>
-          )}
-        </>
+        <Toggle label="行事曆" description="加入行事曆（尚未串接）"
+          checked={calendarEnabled} onChange={setCalendarEnabled} />
       )}
 
       {/* ══ 5. 儲存／取消 ══════════════════════════════════════════════════════ */}

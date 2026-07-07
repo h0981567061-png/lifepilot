@@ -21,6 +21,7 @@ import { RemindersPage }          from "./pages/RemindersPage";
 import { FinancePage }             from "./pages/FinancePage";
 import { MyPage }                  from "./pages/MyPage";
 import { EditPage }                from "./pages/EditPage";
+import { FinanceEditor }          from "./pages/FinanceEditor";
 import { CategoryManagementPage }  from "./pages/CategoryManagementPage";
 import { WorkProfilesPage }        from "./pages/WorkProfilesPage";
 import { CategoryProvider }        from "./CategoryContext";
@@ -852,8 +853,8 @@ export default function App() {
     applyTextSize(size);
     saveUIPrefs({ textSize: size });
   }
-  // "select" = main add screen (textarea + AI + 手動入口), "manual" = blank draft flow
-  const [addMode, setAddMode] = useState<"select" | "manual">("select");
+  // "select" = main add screen, "manual-select" = choice screen, "manual" = blank draft, "manual-finance" = finance form
+  const [addMode, setAddMode] = useState<"select" | "manual-select" | "manual" | "manual-finance">("select");
   const [savedReminders, setSavedReminders] = useState<Reminder[]>(() => {
     runFinancialItemMigration();
     return loadReminders();
@@ -1354,6 +1355,17 @@ export default function App() {
     setAddMode("select");
   }
 
+  function handleManualFinanceNew() {
+    setAddMode("manual-finance");
+  }
+
+  function handleManualFinanceSave(entry: FinanceEntry) {
+    const allEntries = loadFinanceEntries();
+    saveFinanceEntries([...allEntries, entry]);
+    setAddMode("select");
+    setActivePage("finance");
+  }
+
   function handleCreate() {
     const newItems = buildNewReminders();
     if (newItems.length === 0) return;
@@ -1383,11 +1395,18 @@ export default function App() {
     <CategoryProvider>
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
       <main className="flex-1 overflow-y-auto pb-20">
-      {activePage === "add" && (
+      {activePage === "add" && addMode === "manual-finance" && (
+        <FinanceEditor
+          entry={null}
+          onSave={handleManualFinanceSave}
+          onCancel={() => setAddMode("manual-select")}
+        />
+      )}
+      {activePage === "add" && addMode !== "manual-finance" && (
       <div className="max-w-2xl mx-auto px-6 py-14">
 
         {/* ── 手動新增：返回按鈕 ──────────────────────────────────────────── */}
-        {addMode === "manual" && (
+        {(addMode === "manual" || addMode === "manual-select") && (
           <button
             onClick={handleGoBackToSelect}
             className="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1 mb-8"
@@ -1406,10 +1425,44 @@ export default function App() {
             <p className="text-gray-400 text-base">貼上訊息，AI 幫你整理成提醒事項</p>
           </div>
         )}
+        {addMode === "manual-select" && (
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-white mb-1">手動新增</h1>
+            <p className="text-sm text-gray-500">選擇新增類型</p>
+          </div>
+        )}
         {addMode === "manual" && (
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-white mb-1">手動新增事項</h1>
             <p className="text-sm text-gray-500">填寫事項資料後點擊儲存</p>
+          </div>
+        )}
+
+        {/* ── 手動新增選擇入口 ────────────────────────────────────────────── */}
+        {addMode === "manual-select" && (
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              type="button"
+              onClick={handleManualNew}
+              className="flex flex-col items-center gap-3 py-8 px-4 rounded-2xl border border-white/12 bg-white/[0.03] hover:bg-white/[0.07] active:bg-white/[0.09] transition-all"
+            >
+              <span className="text-4xl">📅</span>
+              <div className="text-center">
+                <p className="text-white font-semibold text-sm">記事項</p>
+                <p className="text-gray-500 text-xs mt-1 leading-snug">建立提醒事項<br/>支援提醒通知</p>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={handleManualFinanceNew}
+              className="flex flex-col items-center gap-3 py-8 px-4 rounded-2xl border border-white/12 bg-white/[0.03] hover:bg-white/[0.07] active:bg-white/[0.09] transition-all"
+            >
+              <span className="text-4xl">💰</span>
+              <div className="text-center">
+                <p className="text-white font-semibold text-sm">記收支</p>
+                <p className="text-gray-500 text-xs mt-1 leading-snug">收入、支出<br/>待收、待付</p>
+              </div>
+            </button>
           </div>
         )}
 
@@ -1446,7 +1499,7 @@ export default function App() {
                   <div className="flex-1 h-px bg-white/8" />
                 </div>
                 <button
-                  onClick={handleManualNew}
+                  onClick={() => setAddMode("manual-select")}
                   className="w-full py-3 rounded-xl border border-white/12 bg-white/[0.03] hover:bg-white/[0.06] text-gray-300 hover:text-white font-medium text-sm transition-all duration-150"
                 >
                   ＋ 手動新增

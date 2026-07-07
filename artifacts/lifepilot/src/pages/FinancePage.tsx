@@ -107,8 +107,9 @@ function getPendingItems(
 // ─── List item union type ─────────────────────────────────────────────────────
 
 type ListItem =
-  | { kind: "entry";   data: FinanceEntry; sortDate: string }
-  | { kind: "pending"; pendingRef: PendingRef; sortDate: string };
+  | { kind: "entry";             data: FinanceEntry;  sortDate: string }
+  | { kind: "pending";           pendingRef: PendingRef; sortDate: string }
+  | { kind: "standalone-pending"; entry: FinanceEntry; sortDate: string };
 
 // ─── Date group header formatter ──────────────────────────────────────────────
 
@@ -137,7 +138,8 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
   const [confirmAmount,     setConfirmAmount]     = useState("");
   const [confirmDate,       setConfirmDate]       = useState(todayStr);
   const [confirmNote,       setConfirmNote]       = useState("");
-  const [confirmSubmit,     setConfirmSubmit]     = useState(false);
+  const [confirmSubmit,        setConfirmSubmit]        = useState(false);
+  const [confirmingStandalone, setConfirmingStandalone] = useState<FinanceEntry | null>(null);
 
   // ── Derived data ─────────────────────────────────────────────────────────────
   const prefix = monthPrefix(year, month);
@@ -182,6 +184,15 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
     [allPayable, prefix],
   );
 
+  const monthStandaloneReceivable = useMemo(
+    () => entries.filter(e => e.type === "Receivable" && (!e.date || e.date.substring(0, 7) <= prefix)),
+    [entries, prefix],
+  );
+  const monthStandalonePayable = useMemo(
+    () => entries.filter(e => e.type === "Payable" && (!e.date || e.date.substring(0, 7) <= prefix)),
+    [entries, prefix],
+  );
+
   const incomeTotal     = useMemo(() => monthIncomeEntries.reduce((s, e) => s + e.amount, 0),  [monthIncomeEntries]);
   const expenseTotal    = useMemo(() => monthExpenseEntries.reduce((s, e) => s + e.amount, 0), [monthExpenseEntries]);
   const balance         = incomeTotal - expenseTotal;
@@ -201,14 +212,20 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
       monthReceivable.forEach((r) =>
         items.push({ kind: "pending", pendingRef: r, sortDate: r.item.dueDate || r.reminder.date || "" }),
       );
+      monthStandaloneReceivable.forEach((e) =>
+        items.push({ kind: "standalone-pending", entry: e, sortDate: e.date || "" }),
+      );
     }
     if (filterType === "all" || filterType === "payable") {
       monthPayable.forEach((r) =>
         items.push({ kind: "pending", pendingRef: r, sortDate: r.item.dueDate || r.reminder.date || "" }),
       );
+      monthStandalonePayable.forEach((e) =>
+        items.push({ kind: "standalone-pending", entry: e, sortDate: e.date || "" }),
+      );
     }
     return items.sort((a, b) => b.sortDate.localeCompare(a.sortDate));
-  }, [filterType, monthIncomeEntries, monthExpenseEntries, monthReceivable, monthPayable]);
+  }, [filterType, monthIncomeEntries, monthExpenseEntries, monthReceivable, monthPayable, monthStandaloneReceivable, monthStandalonePayable]);
 
   // Group by date key
   const groupedByDate = useMemo(() => {
@@ -356,6 +373,41 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
     setConfirmingRef(null);
   }
 
+  function handleStartConfirmStandalone(entry: FinanceEntry) {
+    setConfirmingRef(null);
+    setConfirmingStandalone(entry);
+    setConfirmAmount(String(entry.amount));
+    setConfirmDate(todayStr);
+    setConfirmNote(entry.note ?? "");
+    setConfirmSubmit(false);
+  }
+
+  function handleConfirmStandalone() {
+    if (!confirmingStandalone || confirmSubmit) return;
+    const amt = parseFloat(confirmAmount.replace(/,/g, ""));
+    if (isNaN(amt) || amt <= 0) return;
+    setConfirmSubmit(true);
+    const confirmedDate = confirmDate || todayStr;
+    const now = new Date().toISOString();
+    const confirmed: FinanceEntry = {
+      ...confirmingStandalone,
+      type: confirmingStandalone.type === "Receivable" ? "Income" : "Expense",
+      amount: amt,
+      date: confirmedDate,
+      note: confirmNote.trim() || confirmingStandalone.note,
+      updatedAt: now,
+    };
+    mutate(prev => prev.map(e => e.id === confirmingStandalone!.id ? confirmed : e));
+    const [ey, em] = confirmedDate.split("-").map(Number);
+    setYear(ey);
+    setMonth(em);
+    setFilterType(confirmingStandalone.type === "Receivable" ? "income" : "expense");
+    setConfirmSubmit(false);
+    setConfirmingStandalone(null);
+    setConfirmAmount("");
+    setConfirmNote("");
+  }
+
   // ── Finance Editor overlay ────────────────────────────────────────────────
   if (editorMode !== "idle") {
     return (
@@ -441,10 +493,86 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
     );
   }
 
+  function renderConfirmFormStandalone(entry: FinanceEntry) {
+    if (confirmingStandalone?.id !== entry.id) return null;
+    const isReceivable = entry.type === "Receivable";
+    return (
+      <div className="mt-3 rounded-xl bg-white/[0.04] border border-white/10 p-4 space-y-3">
+        <p className="text-xs font-semibold text-gray-300">
+          {isReceivable ? "確認收款" : "確認付款"}
+        </p>
+        <div className="space-y-2.5">
+          <div>
+            <p className="text-[10px] text-gray-500 mb-1.5">金額</p>
+            <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5">
+              <span className="text-gray-500 text-sm shrink-0">NT$</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={confirmAmount}
+                onChange={(e) => setConfirmAmount(e.target.value)}
+                className="flex-1 bg-transparent text-white text-base font-semibold focus:outline-none placeholder-gray-700"
+              />
+            </div>
+          </div>
+          <div>
+            <p className="text-[10px] text-gray-500 mb-1.5">
+              {isReceivable ? "收款日期" : "付款日期"}
+            </p>
+            <input
+              type="date"
+              value={confirmDate}
+              onChange={(e) => setConfirmDate(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
+              style={{ colorScheme: "dark" }}
+            />
+          </div>
+          <div>
+            <p className="text-[10px] text-gray-500 mb-1.5">備註</p>
+            <input
+              type="text"
+              value={confirmNote}
+              onChange={(e) => setConfirmNote(e.target.value)}
+              placeholder="備註（選填）"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none"
+            />
+          </div>
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            onClick={handleConfirmStandalone}
+            disabled={confirmSubmit}
+            className={`flex-1 py-2.5 rounded-xl text-white font-semibold text-sm transition-colors disabled:opacity-40 ${
+              isReceivable ? "bg-teal-600 hover:bg-teal-500" : "bg-rose-600 hover:bg-rose-500"
+            }`}
+          >
+            {confirmSubmit ? "處理中…" : isReceivable ? "確認已收款" : "確認已付款"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmingStandalone(null)}
+            className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 font-semibold text-sm"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── Add button label ──────────────────────────────────────────────────────
-  const showAddBtn = filterType !== "receivable" && filterType !== "payable";
-  const addBtnType: FinanceType = filterType === "income" ? "Income" : "Expense";
-  const addBtnLabel = filterType === "income" ? "＋ 新增收入" : filterType === "expense" ? "＋ 新增支出" : "＋ 記帳";
+  const showAddBtn = true;
+  const addBtnType: FinanceType =
+    filterType === "income"     ? "Income"     :
+    filterType === "expense"    ? "Expense"    :
+    filterType === "receivable" ? "Receivable" :
+    filterType === "payable"    ? "Payable"    : "Expense";
+  const addBtnLabel =
+    filterType === "income"     ? "＋ 新增收入" :
+    filterType === "expense"    ? "＋ 新增支出" :
+    filterType === "receivable" ? "＋ 新增待收" :
+    filterType === "payable"    ? "＋ 新增待付" : "＋ 記帳";
 
   // ── Main render ───────────────────────────────────────────────────────────
   return (
@@ -548,8 +676,8 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
         {FILTERS.map(({ key, label }) => {
           const isActive = filterType === key;
           const badge =
-            key === "receivable" ? monthReceivable.length :
-            key === "payable"    ? monthPayable.length    : 0;
+            key === "receivable" ? monthReceivable.length + monthStandaloneReceivable.length :
+            key === "payable"    ? monthPayable.length    + monthStandalonePayable.length    : 0;
           return (
             <button
               key={key}
@@ -593,6 +721,17 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
                       entry={item.data}
                       onClick={() => openEdit(item.data)}
                     />
+                  ) : item.kind === "standalone-pending" ? (
+                    <div key={`sp-${item.entry.id}`}>
+                      <StandalonePendingCard
+                        entry={item.entry}
+                        todayStr={todayStr}
+                        isConfirming={confirmingStandalone?.id === item.entry.id}
+                        onStartConfirm={() => handleStartConfirmStandalone(item.entry)}
+                        onEdit={() => openEdit(item.entry)}
+                      />
+                      {renderConfirmFormStandalone(item.entry)}
+                    </div>
                   ) : (
                     <div key={item.pendingRef.item.id}>
                       <PendingItemCard
@@ -673,6 +812,75 @@ function EntryRow({ entry, onClick }: { entry: FinanceEntry; onClick: () => void
         <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </button>
+  );
+}
+
+// ─── StandalonePendingCard ────────────────────────────────────────────────────
+
+function StandalonePendingCard({
+  entry, todayStr, isConfirming, onStartConfirm, onEdit,
+}: {
+  entry: FinanceEntry;
+  todayStr: string;
+  isConfirming: boolean;
+  onStartConfirm: () => void;
+  onEdit: () => void;
+}) {
+  const isReceivable = entry.type === "Receivable";
+  const isPast = !!entry.date && entry.date < todayStr;
+  const badgeClass = isReceivable
+    ? "bg-teal-500/15 text-teal-300 border-teal-500/25"
+    : "bg-rose-500/15 text-rose-300 border-rose-500/25";
+
+  return (
+    <div className={`rounded-2xl border px-4 py-4 transition-colors ${
+      isConfirming
+        ? isReceivable
+          ? "border-teal-500/30 bg-teal-500/[0.06]"
+          : "border-rose-500/30 bg-rose-500/[0.06]"
+        : isPast
+          ? "border-rose-500/20 bg-rose-500/[0.03]"
+          : "border-white/10 bg-white/[0.04]"
+    }`}>
+      <div className="flex items-start gap-3">
+        <button
+          type="button"
+          onClick={onStartConfirm}
+          className={`mt-0.5 w-4 h-4 rounded-full border-2 shrink-0 transition-all hover:scale-110 ${
+            isReceivable
+              ? "border-teal-500/60 hover:border-teal-400 hover:bg-teal-500/10"
+              : "border-rose-400/60 hover:border-rose-300 hover:bg-rose-500/10"
+          }`}
+        />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap mb-1">
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${badgeClass}`}>
+              {isReceivable ? "待收" : "待付"}
+            </span>
+            <span className="text-sm font-medium text-gray-200 truncate">
+              {entry.merchant || entry.note || (isReceivable ? "待收款" : "待付款")}
+            </span>
+          </div>
+          <p className={`text-base font-bold tabular-nums ${isReceivable ? "text-teal-400" : "text-rose-400"}`}>
+            {isReceivable ? "+" : "−"} NT${entry.amount.toLocaleString()}
+          </p>
+          {entry.date && (
+            <p className={`text-xs mt-0.5 ${isPast ? "text-rose-400" : "text-gray-500"}`}>
+              {isPast ? "⚠ 已過期・" : "預計 "}{entry.date}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="shrink-0 p-1.5 rounded-lg text-gray-600 hover:text-gray-400 transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+            <path d="M11 2l3 3-9 9H2v-3l9-9z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
   );
 }
 
