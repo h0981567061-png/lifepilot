@@ -130,6 +130,18 @@ export interface TemplateData {
 // Represents a single expected payment/receivable linked to a Reminder.
 // NOT a real Finance Record — those live in financeStore under FinanceEntry.
 
+// Date-source metadata for FinancialItem
+// Determines whether a due date is fixed, relative-to-event, or user-overridden.
+export interface FinancialItemDateSource {
+  // "absolute"  — date is an explicit calendar date (e.g. "8/5"); never auto-recalculate
+  // "relative"  — date = eventBaseDate + offsetDays; recalculate when event date changes
+  // "manual"    — user manually typed a date; never auto-recalculate (highest priority)
+  type: "absolute" | "relative" | "manual";
+  rawText?: string;        // original expression, e.g. "下週四", "三天後"
+  baseField?: "startDate" | "endDate"; // which event date to base the offset on
+  offsetDays?: number;     // (financeDate - baseDate) in whole days; used for recalc
+}
+
 export interface FinancialItem {
   id: string;
   title: string;
@@ -139,6 +151,8 @@ export interface FinancialItem {
   note?: string;
   completed?: boolean;     // future use — do NOT act on this yet
   completedDate?: string;  // future use
+  // Optional — AI-populated so draft UI can recalculate on date changes
+  dateSource?: FinancialItemDateSource;
 }
 
 const STORAGE_KEY = "lifepilot_reminders_v1";

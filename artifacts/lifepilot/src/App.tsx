@@ -15,6 +15,7 @@ import {
   type Reminder,
   type AirportTransferTemplateData,
   type FinancialItem,
+  type FinancialItemDateSource,
 } from "./store";
 import { HomePage }               from "./pages/HomePage";
 import { RemindersPage }          from "./pages/RemindersPage";
@@ -998,6 +999,34 @@ export default function App() {
     };
   }
 
+  // ── Compute day offset between two YYYY-MM-DD dates (a - b in whole days) ──
+  function computeOffsetDays(finDate: string, baseDate: string): number {
+    if (!finDate || !baseDate) return 0;
+    const d1 = new Date(finDate + "T00:00:00");
+    const d2 = new Date(baseDate + "T00:00:00");
+    return Math.round((d1.getTime() - d2.getTime()) / 86_400_000);
+  }
+
+  // ── Build FinancialItemDateSource from AI financialDateSource ──────────────
+  function buildFiDateSource(
+    fds: import("./aiParser").AIFinancialDateSource | null | undefined,
+    finDate: string | undefined,
+    startDate: string,
+    endDate: string,
+  ): FinancialItemDateSource | undefined {
+    if (!fds) return undefined;
+    if (fds.type === "absolute") return { type: "absolute", rawText: fds.rawText };
+    // relative_to_event
+    const baseDate = fds.baseField === "endDate" ? endDate : startDate;
+    const offsetDays = computeOffsetDays(finDate ?? "", baseDate);
+    return {
+      type: "relative",
+      rawText: fds.rawText,
+      baseField: fds.baseField,
+      offsetDays,
+    };
+  }
+
   // ── Map AI events → PreviewItem[] ─────────────────────────────────────────
   function mapAIEvents(aiEvents: AIEvent[]): {
     previewItems: PreviewItem[];
@@ -1108,17 +1137,25 @@ export default function App() {
 
         // Convert future-receivable amount → FinancialItem (type=receivable).
         // Clear item.amount so deriveFinancialItems in EditPage doesn't double-count.
-        // Set dueDate = event date so monthReceivable filter works even without an
-        // explicit payment due date in the message.
+        // If AI provided a specific dueDate (e.g. relative "下週四"), use it; else
+        // fall back to the event start date so month filters still work.
         const rawAmt = String(e.amount ?? "").replace(/[^\d.]/g, "");
         const amtNum = parseFloat(rawAmt);
         if (!isNaN(amtNum) && amtNum > 0) {
+          // Prefer explicit payment date from AI; fall back to event start date
+          const atDueDate = normalizeDate(e.dueDate ?? "") || _startDateNorm || undefined;
           const fi: FinancialItem = {
             id: crypto.randomUUID(),
             title: "待收款",
             type: "receivable",
             amount: amtNum,
-            dueDate: _startDateNorm || undefined,
+            dueDate: atDueDate,
+            dateSource: buildFiDateSource(
+              e.financialDateSource,
+              atDueDate,
+              _startDateNorm,
+              _endDateNorm,
+            ),
           };
           item.financialItems = [fi];
           item.amount = ""; // prevent double-counting via legacy fallback path
@@ -1147,6 +1184,12 @@ export default function App() {
               type: fiType,
               amount: amtNum2,
               dueDate: fiDueDate,
+              dateSource: buildFiDateSource(
+                e.financialDateSource,
+                fiDueDate,
+                _startDateNorm,
+                _endDateNorm,
+              ),
             }];
             item.amount = "";
           }

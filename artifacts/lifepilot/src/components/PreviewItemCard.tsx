@@ -14,7 +14,7 @@ import { WorkProfileSelect } from "./WorkProfileSelect";
 import { WorkProfileSummary } from "./WorkProfileSummary";
 import { AirportTransferTemplateFields } from "./AirportTransferTemplateFields";
 import { getWorkProfiles } from "../workProfileStore";
-import type { FinancialItem } from "../store";
+import type { FinancialItem, FinancialItemDateSource } from "../store";
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
@@ -25,6 +25,40 @@ interface Props {
   onClose: () => void;
   onChange: (patch: Partial<PreviewItem>) => void;
   onDelete: () => void;
+}
+
+// ─── Date recalculation helpers ────────────────────────────────────────────────
+
+/** Add N whole days to a YYYY-MM-DD string; returns the same string on error. */
+function addDays(dateStr: string, days: number): string {
+  if (!dateStr) return dateStr;
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * For each FinancialItem with dateSource.type === "relative", recompute dueDate
+ * based on the new event start/end date. Absolute and manual items are untouched.
+ */
+function recalcRelativeFinancialItems(
+  items: FinancialItem[],
+  newStartDate: string,
+  newEndDate: string,
+): FinancialItem[] {
+  return items.map((fi) => {
+    const ds = fi.dateSource;
+    if (!ds || ds.type !== "relative" || ds.offsetDays == null) return fi;
+    const base = ds.baseField === "endDate" ? newEndDate : newStartDate;
+    if (!base) return fi;
+    return { ...fi, dueDate: addDays(base, ds.offsetDays) };
+  });
+}
+
+/** Mark a single FinancialItem as manually edited (stops auto-recalc). */
+function markFiManual(fi: FinancialItem, newDueDate: string): FinancialItem {
+  const manualSource: FinancialItemDateSource = { type: "manual" };
+  return { ...fi, dueDate: newDueDate || undefined, dateSource: manualSource };
 }
 
 // ─── Small helpers ─────────────────────────────────────────────────────────────
@@ -632,7 +666,17 @@ export function PreviewItemCard({
               <input
                 type="date"
                 value={normalizeDate(draft.date)}
-                onChange={(e) => upd({ date: e.target.value })}
+                onChange={(e) => {
+                  const newDate = e.target.value;
+                  upd({
+                    date: newDate,
+                    financialItems: recalcRelativeFinancialItems(
+                      draft.financialItems ?? [],
+                      newDate,
+                      draft.endDate ?? "",
+                    ),
+                  });
+                }}
                 className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
                 style={{ colorScheme: "dark" }}
               />
@@ -642,7 +686,17 @@ export function PreviewItemCard({
                   <input
                     type="date"
                     value={normalizeDate(draft.endDate ?? "")}
-                    onChange={(e) => upd({ endDate: e.target.value })}
+                    onChange={(e) => {
+                      const newEndDate = e.target.value;
+                      upd({
+                        endDate: newEndDate,
+                        financialItems: recalcRelativeFinancialItems(
+                          draft.financialItems ?? [],
+                          draft.date,
+                          newEndDate,
+                        ),
+                      });
+                    }}
                     className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50"
                     style={{ colorScheme: "dark" }}
                   />
@@ -793,19 +847,44 @@ export function PreviewItemCard({
           <FormRow label="收支">
             <div className="space-y-2">
               {(draft.financialItems ?? []).map((fi) => (
-                <div key={fi.id} className="flex items-center gap-2 py-2 px-3 rounded-lg bg-white/[0.04] border border-white/8">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium shrink-0 ${
-                    fi.type === "receivable"
-                      ? "bg-teal-500/15 text-teal-300 border-teal-500/25"
-                      : "bg-rose-500/15 text-rose-300 border-rose-500/25"
-                  }`}>
-                    {fi.type === "receivable" ? "待收" : "待付"}
-                  </span>
-                  <span className="flex-1 text-sm text-white tabular-nums">NT$ {fi.amount.toLocaleString()}</span>
-                  {fi.dueDate && <span className="text-xs text-gray-500">{fi.dueDate.replace(/-/g, "/")}</span>}
-                  <button type="button"
-                    onClick={() => upd({ financialItems: (draft.financialItems ?? []).filter((i) => i.id !== fi.id) })}
-                    className="text-gray-500 hover:text-red-400 transition-colors text-xs px-1">✕</button>
+                <div key={fi.id} className="rounded-lg bg-white/[0.04] border border-white/8 px-3 py-2 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium shrink-0 ${
+                      fi.type === "receivable"
+                        ? "bg-teal-500/15 text-teal-300 border-teal-500/25"
+                        : "bg-rose-500/15 text-rose-300 border-rose-500/25"
+                    }`}>
+                      {fi.type === "receivable" ? "待收" : "待付"}
+                    </span>
+                    <span className="flex-1 text-sm text-white tabular-nums">NT$ {fi.amount.toLocaleString()}</span>
+                    {fi.dateSource?.type === "relative" && fi.dateSource.rawText && (
+                      <span className="text-[10px] text-blue-400/70 border border-blue-500/20 bg-blue-500/10 rounded px-1.5 py-0.5 shrink-0">
+                        相對：{fi.dateSource.rawText}
+                      </span>
+                    )}
+                    <button type="button"
+                      onClick={() => upd({ financialItems: (draft.financialItems ?? []).filter((i) => i.id !== fi.id) })}
+                      className="text-gray-500 hover:text-red-400 transition-colors text-xs px-1 shrink-0">✕</button>
+                  </div>
+                  {/* Inline date editor — changing date marks this item as "manual" (stops auto-sync) */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-gray-600 shrink-0">
+                      {fi.dateSource?.type === "manual" ? "人工日期" : "預計日期"}
+                    </span>
+                    <input
+                      type="date"
+                      value={fi.dueDate ?? ""}
+                      onChange={(e) => {
+                        upd({
+                          financialItems: (draft.financialItems ?? []).map((f) =>
+                            f.id === fi.id ? markFiManual(f, e.target.value) : f
+                          ),
+                        });
+                      }}
+                      className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500/50"
+                      style={{ colorScheme: "dark" }}
+                    />
+                  </div>
                 </div>
               ))}
 

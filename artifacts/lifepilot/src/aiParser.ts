@@ -12,6 +12,13 @@ export interface AIReminderRule {
   time?: string;        // HH:MM, only for day_before with specific time
 }
 
+// Mirrors AIFinancialDateSource from the server parse.ts
+export interface AIFinancialDateSource {
+  type: "absolute" | "relative_to_event";
+  rawText: string;
+  baseField: "startDate" | "endDate";
+}
+
 export interface AIEvent {
   type: string;
   title: string | null;
@@ -52,6 +59,8 @@ export interface AIEvent {
   endDate?: string | null; // M/D format; only when dateMode="range"
   // ── Reminder rules ─────────────────────────────────────────────────────
   reminderRules?: AIReminderRule[]; // 提醒規則；不建立獨立事項
+  // ── Financial date source ───────────────────────────────────────────────
+  financialDateSource?: AIFinancialDateSource | null; // 款項日期來源資訊
 }
 
 export interface AIParseResult {
