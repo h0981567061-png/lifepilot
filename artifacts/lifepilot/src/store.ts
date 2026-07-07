@@ -186,3 +186,77 @@ export function updateReminder(id: string, patch: Partial<Reminder>): Reminder[]
   persist(updated);
   return updated;
 }
+
+// ─── FinancialItem migration (legacy → v2) ────────────────────────────────────
+// Converts old Reminders that stored money data in flat fields
+// (amount / financialStatus / expectedAmount / financialDueDate)
+// into the structured financialItems[] array.
+// Version-gated so it never re-processes already-migrated records.
+
+const MIGRATION_FI_KEY = "lifepilot_migration_fi_v1";
+
+export function runFinancialItemMigration(): void {
+  if (typeof localStorage === "undefined") return;
+  if (localStorage.getItem(MIGRATION_FI_KEY) === "done") return;
+
+  const reminders = loadReminders();
+  let changed = false;
+
+  const updated = reminders.map((r): Reminder => {
+    // Already migrated — skip
+    if (r.financialItems && r.financialItems.length > 0) return r;
+
+    const items: FinancialItem[] = [];
+
+    // Path 1: explicit financialStatus + expectedAmount
+    if (
+      (r.financialStatus === "receivable" || r.financialStatus === "payable") &&
+      r.expectedAmount && r.expectedAmount > 0
+    ) {
+      items.push({
+        id: `migrated-${r.id}-fs`,
+        title: r.title || (r.financialStatus === "receivable" ? "待收款項" : "待付款項"),
+        type: r.financialStatus,
+        amount: r.expectedAmount,
+        dueDate: r.financialDueDate || undefined,
+      });
+
+    // Path 2: Payment type with raw amount string
+    } else if (!r.financialStatus && r.type === "Payment" && r.amount) {
+      const n = parseFloat(String(r.amount).replace(/,/g, ""));
+      if (!isNaN(n) && n > 0) {
+        items.push({
+          id: `migrated-${r.id}-pay`,
+          title: r.title || "繳費",
+          type: "payable",
+          amount: n,
+          dueDate: r.financialDueDate || r.dueDate || undefined,
+        });
+      }
+
+    // Path 3: Airport Transfer with raw amount string
+    } else if (!r.financialStatus && r.type === "Airport Transfer" && r.amount) {
+      const n = parseFloat(String(r.amount).replace(/,/g, ""));
+      if (!isNaN(n) && n > 0) {
+        items.push({
+          id: `migrated-${r.id}-air`,
+          title: r.title || "接送費",
+          type: "receivable",
+          amount: n,
+          dueDate: r.date || undefined,
+        });
+      }
+    }
+
+    if (items.length > 0) {
+      changed = true;
+      return { ...r, financialItems: items };
+    }
+    return r;
+  });
+
+  if (changed) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  }
+  localStorage.setItem(MIGRATION_FI_KEY, "done");
+}

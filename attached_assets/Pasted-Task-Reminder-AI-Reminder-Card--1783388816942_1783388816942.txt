@@ -1,0 +1,1144 @@
+Task：提醒事項與收支職責分離＋關聯款項單一資料來源
+
+目前系統已經有：
+
+- Reminder 提醒事項
+- AI 智慧輸入
+- 手動新增事項
+- Reminder Card
+- 待收
+- 待付
+- 收入
+- 支出
+- 收支頁
+- Reminder 卡片上的記帳入口
+- 月份行事曆
+- 工作資料板
+- Reminder 與 WorkProfile 關聯
+
+目前存在核心架構問題：
+
+提醒事項中的「記帳／收支」與獨立「收支頁」之間，存在資料來源與功能職責重疊。
+
+實際已發現案例：
+
+提醒事項卡片顯示：
+
+待收 NT$1,200
+
+但是收支頁顯示：
+
+本月待收 NT$0
+
+這代表目前可能存在：
+
+1. Reminder 自己保存一份金額或收支狀態。
+2. Financial Item 又保存另一份資料。
+3. Reminder Card 與收支頁讀取不同資料來源。
+4. AI 解析出的金額只存在 Reminder Draft，沒有建立正式 Financial Item。
+5. 同一筆款項可能在 Reminder 與 Finance 中重複保存。
+
+本次任務不是單純修正畫面同步。
+
+本次必須正式整理：
+
+「提醒事項」與「收支」的職責邊界。
+
+核心原則：
+
+Reminder 負責事情。
+
+Financial Item 負責錢。
+
+Reminder 可以關聯 Financial Item。
+
+Reminder 不應成為第二套記帳系統。
+
+所有正式金額、財務狀態、預計收付日期、實際收付日期，都必須以正式 Financial Item 為單一資料來源。
+
+────────────────────────
+
+一、Reminder 與 Financial Item 的職責
+
+Reminder 負責：
+
+- 標題
+- 群組
+- 日期
+- 日期區間
+- 時間
+- 時間區間
+- 地點
+- 工作關聯
+- 聯絡人關聯
+- 類型專屬資料
+- 備註
+- 提醒設定
+- 行事曆顯示
+
+Financial Item 負責：
+
+- 款項類型
+- 金額
+- 財務狀態
+- 預計收款日期
+- 預計付款日期
+- 實際收款日期
+- 實際付款日期
+- 備註
+- 與 Reminder 的關聯
+
+Reminder 不得另外保存另一份正式財務狀態。
+
+例如：
+
+Reminder 不應自己獨立保存：
+
+amount = 1200
+paymentStatus = pending_receivable
+
+同時 Financial Item 又保存：
+
+amount = 1200
+type = receivable
+
+造成兩套資料。
+
+如果目前舊資料已有類似欄位：
+
+amount
+fee
+price
+expectedAmount
+paymentStatus
+
+請先檢查實際用途。
+
+不要直接刪除造成舊資料遺失。
+
+需要採用向下相容 migration 或資料轉換。
+
+────────────────────────
+
+二、資料關係
+
+資料關係應支援：
+
+一個 Reminder：
+
+可以沒有款項。
+
+可以有一筆款項。
+
+可以有多筆款項。
+
+例如：
+
+機場接送 Reminder
+
+關聯：
+
+待收 NT$1,200
+
+或者：
+
+活動 Reminder
+
+關聯：
+
+收入 NT$5,000
+支出 NT$1,200
+支出 NT$800
+
+因此不要限制：
+
+Reminder 只能有一個 financeRecordId。
+
+請依目前資料架構選擇安全方式：
+
+FinancialItem.reminderId
+
+或：
+
+Reminder.financialItemIds[]
+
+請優先評估目前現有 Store 的資料流。
+
+不要同時建立兩套互相重複的關聯來源。
+
+正式關聯來源只能有一個。
+
+────────────────────────
+
+三、Reminder 中的「＋記帳」
+
+提醒事項內的：
+
+＋記帳
+
+不是第二套記帳系統。
+
+它的作用是：
+
+從目前 Reminder 快速建立一筆關聯 Financial Item。
+
+流程：
+
+Reminder
+↓
+點擊「＋記帳」
+↓
+開啟現有統一款項表單
+↓
+選擇款項類型
+↓
+輸入金額與日期
+↓
+建立 Financial Item
+↓
+Financial Item 關聯目前 Reminder
+↓
+Reminder Card 顯示該 Financial Item 摘要
+
+統一款項類型：
+
+待收
+待付
+收入
+支出
+
+不要建立：
+
+Reminder 專用待收表單
+Reminder 專用待付表單
+Finance 專用另一套表單
+
+全部使用同一套正式 Financial Item 建立流程。
+
+────────────────────────
+
+四、Reminder Card 的收支顯示
+
+Reminder Card 可以顯示關聯款項摘要。
+
+例如：
+
+機場接送
+07/21 22:05
+
+待收 NT$1,200
+
+但是：
+
+Reminder Card 不得從 Reminder 自己的 amount 欄位讀取金額。
+
+Reminder Card 必須查詢與該 Reminder 關聯的正式 Financial Item。
+
+例如：
+
+Financial Item：
+
+id = finance_001
+reminderId = reminder_001
+type = receivable
+amount = 1200
+status = pending
+
+Reminder Card 顯示：
+
+待收 NT$1,200
+
+收支頁也讀取：
+
+finance_001
+
+因此兩邊顯示同一筆資料。
+
+────────────────────────
+
+五、收支頁資料來源
+
+收支頁必須統計所有正式 Financial Item。
+
+包含：
+
+1. 從 Reminder 的「＋記帳」建立的關聯款項。
+2. AI 解析事項時建立的關聯款項。
+3. 使用者直接在收支頁手動建立的獨立款項。
+
+重要：
+
+直接在收支頁建立的 Financial Item：
+
+不需要強迫建立 Reminder。
+
+因此：
+
+Financial Item.reminderId
+
+應允許：
+
+null
+
+概念：
+
+Financial Item
+├── 關聯 Reminder
+└── 獨立款項
+
+兩種都必須可以存在。
+
+────────────────────────
+
+六、AI 金額解析
+
+AI 智慧輸入如果解析到明確金額與付款語意：
+
+應建立 Financial Draft。
+
+例如原文：
+
+下週四會轉帳，費用 $1200
+
+語意：
+
+款項尚未收到。
+
+因此：
+
+type = receivable
+amount = 1200
+status = pending
+
+建立 Reminder 時：
+
+同時建立正式 Financial Item，
+並關聯該 Reminder。
+
+預期結果：
+
+Reminder Card：
+
+待收 NT$1,200
+
+收支頁：
+
+待收 NT$1,200
+
+兩者必須來自同一筆 Financial Item。
+
+不得只在 Reminder Card 顯示 1200，
+但收支頁沒有資料。
+
+────────────────────────
+
+七、AI 不得因條件式文字重複建立款項
+
+例如原文：
+
+如客戶有給現金，請確認是否為小費。
+
+這是條件式提醒。
+
+不得因此建立：
+
+收入
+現金收入
+第二筆待收
+第二筆 Financial Item
+
+例如完整文字同時包含：
+
+信用卡
+下週四轉帳
+費用 $1200
+如客戶有給現金請確認是否為小費
+
+AI 必須依語境判斷。
+
+本案例只能建立：
+
+待收 NT$1,200
+
+一筆 Financial Item。
+
+條件式現金提醒保留在備註或注意事項。
+
+────────────────────────
+
+八、事項日期與財務日期分離
+
+Reminder 日期與 Financial Item 日期不可混為同一概念。
+
+例如：
+
+機場接送日期：
+
+2026/07/21
+
+預計收款日：
+
+2026/07/24
+
+實際收款日：
+
+2026/07/25
+
+三者代表不同事情。
+
+資料概念：
+
+Reminder：
+eventDate = 2026/07/21
+
+Financial Item：
+expectedDate = 2026/07/24
+completedDate = 2026/07/25
+
+不要因 Reminder 發生在 7/21，
+就強迫待收統計一定算在 7/21。
+
+────────────────────────
+
+九、待收與收入的關係
+
+請先檢查目前正式 Finance Model。
+
+核心規則：
+
+待收完成後，不得造成金額重複計算。
+
+例如：
+
+7/21 建立：
+
+待收 NT$1,200
+
+7/25 收到款項。
+
+完成後應表示：
+
+已收 NT$1,200
+實際收款日：7/25
+
+財務統計中：
+
+收入只能計算一次 NT$1,200。
+
+不得同時：
+
+待收 1200
+＋
+收入 1200
+
+然後總收入變成 2400。
+
+如果目前架構是狀態轉換：
+
+receivable pending
+→ receivable completed
+
+請沿用。
+
+如果目前架構是待收完成後產生 income record：
+
+必須建立明確 transfer/reference 關係，
+並確保統計不重複。
+
+優先使用目前最安全且最少破壞既有資料的方式。
+
+────────────────────────
+
+十、待付與支出的關係
+
+待付同樣遵守相同原則。
+
+例如：
+
+待付 NT$3,500
+
+付款完成後：
+
+已付 NT$3,500
+
+實際付款日期保存。
+
+支出統計只能計算一次。
+
+不得：
+
+待付 3500
+＋
+支出 3500
+
+造成支出重複計算。
+
+────────────────────────
+
+十一、雙向同步
+
+Reminder Card 與收支頁必須讀取同一筆 Financial Item。
+
+例如：
+
+收支頁將：
+
+待收 NT$1,200
+
+標記為已收。
+
+返回 Reminder Card：
+
+應立即顯示：
+
+已收 NT$1,200
+
+不得仍顯示待收。
+
+反過來：
+
+如果 Reminder 詳情頁提供完成收款操作，
+
+完成後收支頁也必須立即顯示已收。
+
+不要使用：
+
+A 頁更新 Reminder.paymentStatus
+B 頁更新 FinancialItem.status
+
+這種雙狀態同步方式。
+
+正式狀態只能存在 Financial Item。
+
+其他頁面只是讀取與操作該資料。
+
+────────────────────────
+
+十二、刪除 Reminder 的處理方式
+
+如果 Reminder 沒有關聯 Financial Item：
+
+正常刪除。
+
+如果 Reminder 有關聯 Financial Item：
+
+刪除前提供選擇：
+
+刪除事項
+
+此事項有關聯款項。
+
+[ 刪除事項並保留收支紀錄 ]
+[ 刪除事項與關聯收支 ]
+[ 取消 ]
+
+如果選擇：
+
+保留收支紀錄
+
+則：
+
+刪除 Reminder。
+
+Financial Item 保留。
+
+解除 reminderId 關聯。
+
+如果選擇：
+
+刪除事項與關聯收支
+
+才同時刪除關聯 Financial Item。
+
+不要靜默刪除使用者的財務資料。
+
+────────────────────────
+
+十三、刪除 Financial Item 的處理方式
+
+如果刪除 Financial Item：
+
+只刪除該款項。
+
+不得刪除 Reminder。
+
+Reminder 保留。
+
+Reminder Card 的該款項摘要消失。
+
+如果 Reminder 還有其他 Financial Item：
+
+其他款項繼續正常顯示。
+
+────────────────────────
+
+十四、防止重複建立款項
+
+需要特別檢查以下流程：
+
+AI 智慧輸入
+↓
+解析出待收 1200
+↓
+進入 Reminder Editor
+↓
+儲存
+↓
+建立 Reminder
+↓
+建立 Financial Item
+
+之後：
+
+編輯 Reminder
+↓
+修改地點
+↓
+再次儲存
+
+不得再次建立第二筆：
+
+待收 NT$1,200
+
+需要有安全的 Draft 關聯或 existingFinancialItemId 判斷。
+
+同一筆 AI 解析結果在正常編輯流程中不得重複建立款項。
+
+────────────────────────
+
+十五、AI Draft 與正式 Financial Item
+
+AI Parser 階段不要直接寫入正式 Finance Store。
+
+建議流程：
+
+AI Parser
+↓
+Reminder Draft
+＋
+Financial Draft[]
+↓
+使用者檢查
+↓
+使用者儲存 Reminder
+↓
+建立 Reminder
+↓
+建立 Financial Item[]
+↓
+建立正式關聯
+
+如果使用者在儲存前刪除 AI 建議的待收：
+
+則不要建立該 Financial Item。
+
+如果使用者把：
+
+待收 1200
+
+改成：
+
+待收 1500
+
+則正式建立：
+
+待收 1500
+
+不要同時保留 AI 原始 1200。
+
+────────────────────────
+
+十六、手動新增 Reminder
+
+手動新增事項時：
+
+預設沒有 Financial Item。
+
+使用者可以：
+
+不記帳
+
+或：
+
+點擊「＋新增款項」
+
+加入：
+
+待收
+待付
+收入
+支出
+
+儲存 Reminder 時建立正式關聯 Financial Item。
+
+不是每一筆 Reminder 都必須有財務資料。
+
+例如：
+
+桌球課
+回診
+買東西提醒
+家庭聚會
+
+如果沒有金額：
+
+不要建立空白 Financial Item。
+
+────────────────────────
+
+十七、獨立收支
+
+收支頁必須允許建立不關聯 Reminder 的獨立收支。
+
+例如：
+
+早餐支出 80
+薪資收入 50,000
+房租支出 20,000
+
+這些不需要建立 Reminder。
+
+因此不要把：
+
+收支一定要有 Reminder
+
+寫成強制規則。
+
+────────────────────────
+
+十八、本月統計規則
+
+請明確區分：
+
+本月待收
+本月待付
+本月收入
+本月支出
+
+待收：
+
+依 expectedDate 或目前正式預計收款日期欄位統計。
+
+待付：
+
+依 expectedDate 或目前正式預計付款日期欄位統計。
+
+收入：
+
+依實際入帳日期統計。
+
+支出：
+
+依實際付款日期統計。
+
+如果目前 Finance Model 的日期設計不同：
+
+請先檢查現有資料結構，
+採用相容方式整理。
+
+不要直接以 Reminder 日期取代所有財務日期。
+
+────────────────────────
+
+十九、首頁摘要
+
+首頁如果顯示：
+
+待收
+待付
+收入
+支出
+
+必須讀取正式 Financial Item 的 derived data。
+
+不要讀 Reminder amount。
+
+不要讀卡片文字。
+
+不要從 notes 重新解析金額。
+
+首頁、Reminder Card、收支頁必須使用同一正式財務來源。
+
+────────────────────────
+
+二十、月份行事曆
+
+月份行事曆中的 Reminder 日期：
+
+仍以 Reminder 日期為準。
+
+不要因預計收款日在另一日，
+就把原 Reminder 移動到收款日。
+
+例如：
+
+接機：
+7/21
+
+預計收款：
+7/24
+
+月曆中的接機事項：
+
+仍在 7/21。
+
+財務待收：
+
+在收支系統依 7/24 管理。
+
+兩者是不同時間維度。
+
+────────────────────────
+
+二十一、舊資料相容與 migration
+
+請檢查現有 LocalStorage、Store 或後端資料中是否存在：
+
+Reminder.amount
+Reminder.fee
+Reminder.price
+Reminder.paymentStatus
+Reminder.financeData
+TemplateData.amount
+AirportTransfer.amount
+
+或其他重複財務欄位。
+
+如果舊 Reminder 已有：
+
+amount = 1200
+status = receivable
+
+但是沒有正式 Financial Item，
+
+需要進行安全 migration：
+
+1. 建立一筆 Financial Item。
+2. 關聯原 Reminder。
+3. 保留原資料直到 migration 成功。
+4. 防止重複 migration。
+5. 不得每次啟動 App 都重複建立同一筆款項。
+
+migration 必須具備：
+
+版本標記
+或
+可識別的 migration 狀態。
+
+不要清除 LocalStorage。
+
+不要要求使用者重新建立舊資料。
+
+────────────────────────
+
+二十二、機場接送測試案例
+
+測試原文：
+
+司機 陳彥翔 車牌 RFH-7077
+06/28 22:05
+航班編號CI836 接機
+AR87260623601O
+AB8830
+
+黃湘芹
+0986923585 舒適五人座
+1人1件行李 信用卡
+臺灣桃園國際機場
+→ 新北市新店區安和路三段111巷7弄1號
+
+不簽不收，客下後
+下週四會轉帳，費用$1200
+
+出發、抵達、客上及客下請記得回報！
+
+如客戶有給現金，請確認是否為小費
+請勿重複收費，謝謝。
+
+預期：
+
+Reminder：
+機場接送事項正常建立。
+
+Financial Item：
+
+類型：待收
+金額：1200
+狀態：pending
+關聯：該 Reminder
+
+Reminder Card：
+
+待收 NT$1,200
+
+收支頁：
+
+待收 NT$1,200
+
+只能有一筆。
+
+不得因：
+
+信用卡
+轉帳
+條件式現金提醒
+
+建立多筆重複款項。
+
+────────────────────────
+
+二十三、完整測試案例
+
+測試 1：
+
+建立沒有金額的普通 Reminder。
+
+預期：
+不建立 Financial Item。
+
+────────────────
+
+測試 2：
+
+手動 Reminder 新增待收 1200。
+
+預期：
+建立一筆正式 Financial Item。
+Reminder Card 與收支頁都顯示待收 1200。
+
+────────────────
+
+測試 3：
+
+AI 解析「費用 $1200，下週轉帳」。
+
+預期：
+建立一筆待收 1200。
+Reminder Card 與收支頁一致。
+
+────────────────
+
+測試 4：
+
+編輯上述 Reminder 的地點後重新儲存。
+
+預期：
+仍只有一筆待收 1200。
+
+────────────────
+
+測試 5：
+
+在收支頁將待收標記為已收。
+
+預期：
+Reminder Card 同步顯示已收。
+
+────────────────
+
+測試 6：
+
+待收 1200 完成後。
+
+預期：
+收入統計只增加 1200。
+不得增加 2400。
+
+────────────────
+
+測試 7：
+
+待付 3500 完成後。
+
+預期：
+支出統計只增加 3500。
+不得重複計算。
+
+────────────────
+
+測試 8：
+
+刪除有關聯款項的 Reminder。
+
+預期：
+提供保留款項或一起刪除的選擇。
+
+────────────────
+
+測試 9：
+
+選擇保留款項。
+
+預期：
+Reminder 刪除。
+Financial Item 保留。
+關聯解除。
+
+────────────────
+
+測試 10：
+
+直接刪除 Financial Item。
+
+預期：
+Reminder 保留。
+卡片款項摘要消失。
+
+────────────────
+
+測試 11：
+
+在收支頁新增早餐支出 80。
+
+預期：
+建立獨立 Financial Item。
+不建立 Reminder。
+
+────────────────
+
+測試 12：
+
+AI 原文同時有：
+信用卡
+轉帳
+費用 1200
+如有現金可能是小費
+
+預期：
+只有一筆待收 1200。
+
+────────────────
+
+測試 13：
+
+Reminder 日期 7/21。
+預計收款日 7/24。
+實際收款日 7/25。
+
+預期：
+月曆事項在 7/21。
+待收管理依 7/24。
+收入統計依 7/25。
+
+────────────────
+
+測試 14：
+
+舊 Reminder 已有待收 1200，
+但沒有 Financial Item。
+
+預期：
+migration 後建立一筆正式 Financial Item。
+不得建立兩筆。
+
+────────────────
+
+測試 15：
+
+重新整理 App 多次。
+
+預期：
+migration 不會重複建立 Financial Item。
+
+────────────────
+
+測試 16：
+
+一個 Reminder 關聯：
+收入 5000
+支出 1200
+支出 800
+
+預期：
+三筆款項都正常顯示與統計。
+不得限制只能一筆款項。
+
+────────────────────────
+
+二十四、本次禁止
+
+不要建立第二套 Reminder Finance Store。
+
+不要建立 CardAmount。
+
+不要建立 HomeAmount。
+
+不要讓 TemplateData 保存正式金額。
+
+不要讓 Airport Transfer Template 保存第二份 amount。
+
+不要從 notes 動態重新解析金額作為正式統計來源。
+
+不要讓 Reminder 與 Financial Item 各自保存獨立狀態。
+
+不要因待收完成產生重複收入統計。
+
+不要因待付完成產生重複支出統計。
+
+不要強迫所有 Financial Item 都必須關聯 Reminder。
+
+不要強迫所有 Reminder 都必須建立 Financial Item。
+
+不要刪除 Reminder 時靜默刪除財務資料。
+
+不要清除 LocalStorage。
+
+不要進行破壞性 migration。
+
+不要修改 WorkProfile 架構。
+
+不要修改聯絡人／客戶管理架構。
+
+不要修改月份行事曆資料來源。
+
+不要大幅重構整個 App。
+
+不要自動開始下一個 Task。
+
+────────────────────────
+
+二十五、完成後回報
+
+完成後請使用繁體中文完整回報：
+
+1. 原本 Reminder Card 有待收 1200，但收支頁為 0 的真正原因。
+
+2. 正式 Financial Item 的單一資料來源放在哪裡。
+
+3. Reminder 與 Financial Item 使用什麼關聯方式。
+
+4. 是否支援一個 Reminder 關聯多筆 Financial Item。
+
+5. Reminder 的「＋記帳」現在如何運作。
+
+6. AI 金額解析後如何從 Financial Draft 轉為正式 Financial Item。
+
+7. 如何避免編輯 Reminder 時重複建立款項。
+
+8. 待收完成後如何避免收入重複計算。
+
+9. 待付完成後如何避免支出重複計算。
+
+10. Reminder 日期、預計收付日期、實際收付日期如何區分。
+
+11. 刪除 Reminder 時如何處理關聯款項。
+
+12. 刪除 Financial Item 是否會影響 Reminder。
+
+13. 舊資料 migration 如何處理。
+
+14. migration 如何避免重複執行。
+
+15. 首頁、Reminder Card、收支頁是否讀取同一正式資料來源。
+
+16. 機場接送「費用 $1200」測試結果。
+
+17. 條件式現金提醒是否避免建立額外收入。
+
+18. 16 個完整測試案例結果。
+
+19. 手機版測試結果。
+
+20. TypeScript、lint、build 結果。
+
+完成後停止，不要開始下一個功能。

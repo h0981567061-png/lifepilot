@@ -160,20 +160,24 @@ export function FinancePage({ reminders: propReminders = [], onEditReminder, onR
     () => entries.filter((e) => e.type === "Expense"  && e.date.startsWith(prefix)),
     [entries, prefix],
   );
-  // Fall back to the reminder's own date when a FinancialItem has no explicit dueDate.
-  // This makes items without a separate due date appear in the correct month based on
-  // the event date, instead of being hidden from all monthly views.
+  // Month-filtering rules for pending items:
+  // • If item has an explicit dueDate → only appear in that specific month.
+  // • If NO explicit dueDate → carry forward: appear in reminder's month AND all
+  //   subsequent months until confirmed/paid. This prevents outstanding items from
+  //   disappearing from the current month's view just because the event was last month.
   const monthReceivable = useMemo(
     () => allReceivable.filter((r) => {
-      const eff = r.item.dueDate || r.reminder.date;
-      return eff?.startsWith(prefix);
+      if (r.item.dueDate) return r.item.dueDate.startsWith(prefix);
+      const m = r.reminder.date?.substring(0, 7) ?? "";
+      return !m || m <= prefix;
     }),
     [allReceivable, prefix],
   );
   const monthPayable = useMemo(
     () => allPayable.filter((r) => {
-      const eff = r.item.dueDate || r.reminder.date;
-      return eff?.startsWith(prefix);
+      if (r.item.dueDate) return r.item.dueDate.startsWith(prefix);
+      const m = r.reminder.date?.substring(0, 7) ?? "";
+      return !m || m <= prefix;
     }),
     [allPayable, prefix],
   );
