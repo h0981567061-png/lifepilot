@@ -5,6 +5,13 @@
 // If the server is unavailable, returns 503, or returns malformed JSON,
 // the caller (App.tsx) falls back to local rule-based parsers.
 
+export interface AIReminderRule {
+  type: "before_start" | "at_start" | "day_before";
+  value?: number;       // for before_start
+  unit?: "minute" | "hour" | "day"; // for before_start
+  time?: string;        // HH:MM, only for day_before with specific time
+}
+
 export interface AIEvent {
   type: string;
   title: string | null;
@@ -43,6 +50,8 @@ export interface AIEvent {
   // ── Date range ─────────────────────────────────────────────────────────
   dateMode?: "single" | "range" | null;
   endDate?: string | null; // M/D format; only when dateMode="range"
+  // ── Reminder rules ─────────────────────────────────────────────────────
+  reminderRules?: AIReminderRule[]; // 提醒規則；不建立獨立事項
 }
 
 export interface AIParseResult {
@@ -95,6 +104,9 @@ export function validateAIResult(data: unknown): data is AIParseResult {
     if (typeof ev.type !== "string") return false;
     if (!Array.isArray(ev.items)) {
       (ev as Record<string, unknown>).items = [];
+    }
+    if (!Array.isArray(ev.reminderRules)) {
+      (ev as Record<string, unknown>).reminderRules = [];
     }
   }
   return true;

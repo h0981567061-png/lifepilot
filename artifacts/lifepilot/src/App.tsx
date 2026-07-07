@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { loadUIPrefs, saveUIPrefs, applyTextSize, type TextSize } from "./lib/uiPrefs";
-import { parseWithAI, type AIEvent } from "./aiParser";
+import { parseWithAI, type AIEvent, type AIReminderRule } from "./aiParser";
 import type { PreviewItem } from "./previewTypes";
 import { TYPE_LABEL, emptyPreviewItem } from "./previewTypes";
 import { PreviewItemCard } from "./components/PreviewItemCard";
@@ -972,6 +972,32 @@ export default function App() {
     return matches.length === 1 ? matches[0].id : undefined;
   }
 
+  // ── Convert AI reminderRule → ReminderNotification ─────────────────────────
+  function convertReminderRule(rr: AIReminderRule): import("./store").ReminderNotification {
+    if (rr.type === "at_start") {
+      return { id: crypto.randomUUID(), kind: "at-time" };
+    }
+    if (rr.type === "day_before") {
+      return { id: crypto.randomUUID(), kind: "day-before", dayBeforeTime: rr.time ?? "08:00" };
+    }
+    // before_start
+    const v = rr.value ?? 0;
+    const u = rr.unit ?? "minute";
+    if (u === "day"    && v === 1)  return { id: crypto.randomUUID(), kind: "day-before" };
+    if (u === "hour"   && v === 2)  return { id: crypto.randomUUID(), kind: "before-2h" };
+    if (u === "hour"   && v === 1)  return { id: crypto.randomUUID(), kind: "before-1h" };
+    if (u === "minute" && v === 30) return { id: crypto.randomUUID(), kind: "before-30m" };
+    if (u === "minute" && v === 10) return { id: crypto.randomUUID(), kind: "before-10m" };
+    // Custom fallback
+    return {
+      id: crypto.randomUUID(),
+      kind: "custom",
+      customDays:    u === "day"    ? v : 0,
+      customHours:   u === "hour"   ? v : 0,
+      customMinutes: u === "minute" ? v : 0,
+    };
+  }
+
   // ── Map AI events → PreviewItem[] ─────────────────────────────────────────
   function mapAIEvents(aiEvents: AIEvent[]): {
     previewItems: PreviewItem[];
@@ -1125,6 +1151,12 @@ export default function App() {
             item.amount = "";
           }
         }
+      }
+
+      // ── Convert AI reminderRules → ReminderNotification[] ────────────────────
+      if (Array.isArray(e.reminderRules) && e.reminderRules.length > 0) {
+        item.reminders = e.reminderRules.map(convertReminderRule);
+        item.notes = item.notes; // notes already excludes reminder text (per system prompt)
       }
 
       return item;
