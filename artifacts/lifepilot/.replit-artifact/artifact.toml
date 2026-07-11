@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "LifePilot"
+title = "提醒事項"
 version = "1.0.0"
 id = "artifacts/lifepilot"
 router = "path"
